@@ -82,6 +82,16 @@ const mark = computed(
 
 const dot = computed(() => (props.session.activity ? STATE_CLASS[props.session.activity] : ''))
 
+/** How long one beat of the dot lasts, in step with the `beat` keyframes below. */
+const BEAT = 1800
+
+/**
+ * Every beating dot on one clock. A CSS animation starts when its element does, so cards that
+ * appeared at different moments beat out of step; a negative delay off the epoch puts them all on
+ * the same grid. It is read again whenever the state changes, which is when the animation restarts.
+ */
+const phase = computed(() => (dot.value === 's-working' ? `-${Date.now() % BEAT}ms` : '0ms'))
+
 function open(url: string): void {
   void window.api.open(url)
 }
@@ -90,6 +100,7 @@ function open(url: string): void {
 <template>
   <li
     :class="['card', dot, { active: session.active, pinned: session.pinned, dragging }]"
+    :style="{ '--beat-phase': phase }"
     draggable="true"
     @dragstart="emit('grab')"
     @dragover.prevent
@@ -170,6 +181,7 @@ function open(url: string): void {
 .card.s-working::before {
   background: var(--ok);
   animation: beat 1.8s ease-in-out infinite;
+  animation-delay: var(--beat-phase, 0ms);
 }
 
 @keyframes beat {

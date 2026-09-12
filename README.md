@@ -46,7 +46,9 @@ dragged into any order, which is then hers until the `vlastní pořadí ×` chip
 strip under the gauges says what the day went into, summed across every session.
 
 **Reading the conversation:** the `chat` button on a card opens the transcript beside the board,
-read only, the tool calls named rather than unfolded and the harness blocks stripped. Escape closes
+read only and with the harness blocks stripped. The tool calls sit behind a fold that names each one
+and the one argument saying what it was on; what a tool answered is never carried at all. A sweep of
+the board does not reload the pane, so nothing blinks and the reading keeps its place. Escape closes
 it.
 
 ## Configuration
