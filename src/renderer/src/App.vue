@@ -15,6 +15,7 @@ const search = ref('')
 const dragged = ref<string | null>(null)
 const reading = ref<string | null>(null)
 const field = ref<HTMLInputElement | null>(null)
+const ticking = ref(false)
 /** One rule for the whole board: compact by default, everything spelled out when expanded. */
 const expanded = ref(remembered('expanded') === '1')
 /** Two ways to read the same board: the order she arranged, or the workflow the states make. */
@@ -151,7 +152,9 @@ onUnmounted(() => {
     <header class="bar drag">
       <h1>Claude session</h1>
       <UsageBar v-if="!expanded" :windows="board.usage" compact />
-      <span class="stamp">{{ board.at ? `naposledy ${clock(board.at)}` : 'načítá se' }}</span>
+      <button class="stamp" title="Vteřiny" @click="ticking = !ticking">
+        {{ board.at ? `naposledy ${clock(board.at, ticking)}` : 'načítá se' }}
+      </button>
       <button
         class="wider"
         :title="workflow ? 'Seřadit, jak jsi to nechala' : 'Seřadit podle stavu'"
@@ -279,10 +282,16 @@ h1 {
 }
 
 .stamp {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
   color: var(--ink-muted);
   font-size: 11px;
   margin-left: auto;
   white-space: nowrap;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
 }
 
 .today {

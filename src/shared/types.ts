@@ -71,6 +71,8 @@ export interface Session {
   changes: Change[]
   state: StateWord
   activity: ActivityWord | null
+  /** A gate or a task running beside what the session itself is doing. */
+  extra: ActivityWord | null
   /** What the session is waiting on, where it is known: the issue a monitor is watching. */
   about: string | null
   /** When the task it is waiting on started, so a row can say a long one has been on too long. */

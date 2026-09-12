@@ -6,7 +6,7 @@ import vueParser from 'vue-eslint-parser'
 
 export default defineConfig(
   // The icon renderer is a plain Electron entry point, so it is CommonJS and not part of the app.
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'tools/icons/**'] },
+  { ignores: ['**/node_modules', '**/dist', '**/out', 'tools/icons/**', 'tools/hook/**'] },
   tseslint.configs.recommended,
   eslintPluginVue.configs['flat/recommended'],
   {
