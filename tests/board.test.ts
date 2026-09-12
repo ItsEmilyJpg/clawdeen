@@ -4,8 +4,8 @@ import { waitingOn } from '../src/main/board'
 import { checksOf } from '../src/main/forge'
 import { openSession } from '../src/main/records'
 import { burnOf, burnVerdict, repoColour, stateLabel } from '../src/shared/words'
-import { LANES } from '../src/renderer/src/words'
-import type { Change } from '../src/shared/types'
+import { inLane, LANES } from '../src/renderer/src/words'
+import type { Change, Session } from '../src/shared/types'
 
 function change(over: Partial<Change> = {}): Change {
   return {
@@ -171,6 +171,64 @@ describe('LANES', () => {
     expect(words).toContain('čeká na CI')
     expect(words.indexOf('čeká na CI')).toBeGreaterThan(words.indexOf('čeká na tebe'))
     expect(words.at(-1)).toBeNull()
+  })
+})
+
+describe('inLane', () => {
+  function session(over: Partial<Session> = {}): Session {
+    return {
+      id: 'one',
+      cli: 'claude',
+      title: 'one',
+      headline: 'one',
+      place: 'repo',
+      last: 1789219700,
+      active: true,
+      issue: null,
+      change: null,
+      changes: [],
+      state: 'bez PR',
+      activity: 'pracuje',
+      extra: null,
+      about: null,
+      since: null,
+      entered: 1789219000,
+      heard: null,
+      pinned: false,
+      focused: false,
+      ...over
+    }
+  }
+
+  it('stands by how long a card has been in the state, not by what moved last', () => {
+    const older = session({ id: 'older', entered: 1789210000, last: 1789219000 })
+    const newer = session({ id: 'newer', entered: 1789219000, last: 1789219900 })
+    expect([newer, older].sort(inLane([])).map((one) => one.id)).toEqual(['older', 'newer'])
+  })
+
+  it('does not move a card because its session just did something', () => {
+    const one = session({ id: 'one', entered: 1789210000, last: 1789219000 })
+    const other = session({ id: 'other', entered: 1789219000, last: 1789219100 })
+    const before = [one, other].sort(inLane([])).map((row) => row.id)
+    other.last = 1789229999
+    expect([one, other].sort(inLane([])).map((row) => row.id)).toEqual(before)
+  })
+
+  it('keeps what she dragged and what she pinned in front', () => {
+    const dragged = session({ id: 'dragged', entered: 1789219900 })
+    const held = session({ id: 'held', entered: 1789219800, pinned: true })
+    const oldest = session({ id: 'oldest', entered: 1789210000 })
+    expect([oldest, held, dragged].sort(inLane(['dragged'])).map((one) => one.id)).toEqual([
+      'dragged',
+      'held',
+      'oldest'
+    ])
+  })
+
+  it('falls back to what moved last where no state stands behind the card', () => {
+    const quiet = session({ id: 'quiet', activity: null, entered: null, last: 1789210000 })
+    const recent = session({ id: 'recent', activity: null, entered: null, last: 1789219000 })
+    expect([quiet, recent].sort(inLane([])).map((one) => one.id)).toEqual(['recent', 'quiet'])
   })
 })
 
