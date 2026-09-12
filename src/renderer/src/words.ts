@@ -1,6 +1,6 @@
 import type { ActivityWord, StateWord } from '../../shared/types'
 
-export { ago, burnVerdict, clock, inWords, stateLabel } from '../../shared/words'
+export { ago, burnVerdict, clock, inWords, repoColour, stateLabel } from '../../shared/words'
 
 /** One class per word, the same names the stylesheet colours. */
 export const STATE_CLASS: { [key in StateWord]: string } = {
