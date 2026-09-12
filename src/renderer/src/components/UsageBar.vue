@@ -67,14 +67,18 @@ function rest(window: UsageWindow): string {
   white-space: nowrap;
 }
 
-/* In a rail there is no room for the little bars, and less for the sentence beside them. */
-@media (max-width: 860px) {
+/*
+ * The little bar goes first and the sentence last, because the bar only draws the percentage that
+ * stands beside it, while the sentence carries the one thing the gauge is for: what it lasts,
+ * against when it comes back.
+ */
+@media (max-width: 1000px) {
   .meter .track {
     display: none;
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 560px) {
   .meter .sentence {
     display: none;
   }
