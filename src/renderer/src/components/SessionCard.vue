@@ -80,6 +80,9 @@ const mark = computed(
   () => props.session.issue?.token ?? props.session.change?.token.replace('PR ', '') ?? null
 )
 
+/** A row has no chip for the issue, so the number in front of the title is the only way to it. */
+const markUrl = computed(() => props.session.issue?.url ?? props.session.change?.url ?? undefined)
+
 const dot = computed(() => (props.session.activity ? STATE_CLASS[props.session.activity] : ''))
 
 /** How long one beat of the dot lasts, in step with the `beat` keyframes below. */
@@ -109,7 +112,9 @@ function open(url: string): void {
     <button class="open" :title="session.title" @click="open(APP_SESSION + session.id)" />
     <div class="left">
       <div class="title">
-        <span v-if="mark" class="number">{{ mark }}</span
+        <a v-if="mark" class="number" :href="markUrl" @click.prevent="markUrl && open(markUrl)">{{
+          mark
+        }}</a
         >{{ session.headline }}
       </div>
       <div class="chips">
@@ -250,6 +255,22 @@ function open(url: string): void {
 .number {
   color: var(--ink-muted);
   margin-right: 6px;
+  text-decoration: none;
+}
+
+/* The title lets the card underneath have the click; the number keeps it where it leads somewhere. */
+.number[href] {
+  pointer-events: auto;
+}
+
+.number[href]:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* A chip with nowhere to go is a label, and the click on it belongs to the card under it. */
+.chip:not([href]) {
+  pointer-events: none;
 }
 
 .chips {

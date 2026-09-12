@@ -20,7 +20,12 @@ function transcript(lines: unknown[]): string {
 }
 
 /** A session the task directory knows about, which is what lets pendingWork read the transcript at all. */
-function withTasks(cli: string, task = 'one', quietFor = 0, wrote = ''): void {
+function withTasks(
+  cli: string,
+  task = 'one',
+  quietFor = 0,
+  wrote = 'the task said something\n'
+): void {
   const directory = join('/tmp', `claude-${userInfo().uid}`, `board-test-${cli}`, cli, 'tasks')
   mkdirSync(directory, { recursive: true })
   const output = join(directory, `${task}.output`)
@@ -29,6 +34,14 @@ function withTasks(cli: string, task = 'one', quietFor = 0, wrote = ''): void {
     const when = new Date(Date.now() - quietFor * 1000)
     utimesSync(output, when, when)
   }
+  rubbish.push(join('/tmp', `claude-${userInfo().uid}`, `board-test-${cli}`))
+}
+
+/** A task directory with nothing in it, which is what a session whose monitor is quiet has. */
+function withoutTasks(cli: string): void {
+  mkdirSync(join('/tmp', `claude-${userInfo().uid}`, `board-test-${cli}`, cli, 'tasks'), {
+    recursive: true
+  })
   rubbish.push(join('/tmp', `claude-${userInfo().uid}`, `board-test-${cli}`))
 }
 
@@ -41,6 +54,17 @@ const said = (role: string, content: unknown, stop?: string): unknown => ({
   type: role,
   message: { role, content, stop_reason: stop }
 })
+
+/** The call that puts a command in the background, and the result that gives it its task id. */
+const ranInBackground = (command: string, id: string): unknown =>
+  said('assistant', [{ type: 'tool_use', name: 'Bash', id, input: { command } }], 'tool_use')
+
+const resultOf = (id: string, content: string): unknown =>
+  said('user', [{ type: 'tool_result', tool_use_id: id, content }])
+
+/** A monitor, which the session starts the same way and which exists to wait. */
+const watched = (command: string, id: string): unknown =>
+  said('assistant', [{ type: 'tool_use', name: 'Monitor', id, input: { command } }], 'tool_use')
 
 describe('lastTurn', () => {
   it('is asking while a question stands unanswered', async () => {
@@ -148,8 +172,33 @@ describe('pendingWork', () => {
 describe('pendingWork tells waiting from working', () => {
   it('calls a monitor watching, because it waits on something outside the session', async () => {
     withTasks('four', 'bmon12345')
-    const path = transcript([said('user', 'Monitor started (task bmon12345, persistent')])
+    const path = transcript([
+      watched('while true; do sleep 60; done', 'toolu_mon'),
+      resultOf('toolu_mon', 'Monitor started (task bmon12345, persistent')
+    ])
     expect((await pendingWork('four', path))?.doing).toBe('watching')
+  })
+
+  /** A monitor has no output file until it has something to say, which is most of its life. */
+  it('holds a monitor that has not written a file at all', async () => {
+    withoutTasks('twelve')
+    const path = transcript([
+      watched('while true; do sleep 60; done', 'toolu_quiet'),
+      resultOf('toolu_quiet', 'Monitor started (task bmon55555, persistent')
+    ])
+    expect((await pendingWork('twelve', path))?.doing).toBe('watching')
+  })
+
+  /** The same wording in a transcript the session only read names somebody else's task. */
+  it('leaves alone a monitor the session merely quoted', async () => {
+    withTasks('thirteen', 'bcmd66666')
+    const path = transcript([
+      said('assistant', [
+        { type: 'text', text: 'the file says: Monitor started (task bmon66666,' }
+      ]),
+      said('user', backgrounded('thirteen', 'bcmd66666'))
+    ])
+    expect((await pendingWork('thirteen', path))?.doing).toBe('working')
   })
 
   it('calls a command that has just written working', async () => {
@@ -162,6 +211,42 @@ describe('pendingWork tells waiting from working', () => {
     withTasks('six', 'bcmd67890', 20 * 60)
     const path = transcript([said('user', backgrounded('six', 'bcmd67890'))])
     expect((await pendingWork('six', path))?.doing).toBe('waiting')
+  })
+
+  /** An empty file stamps when it was made, which is not the task saying anything. */
+  it('calls a command that has never printed a byte waiting', async () => {
+    withTasks('eight', 'bcmd11111', 0, '')
+    const path = transcript([said('user', backgrounded('eight', 'bcmd11111'))])
+    expect((await pendingWork('eight', path))?.doing).toBe('waiting')
+  })
+
+  it('calls a loop that sleeps waiting, however loudly it prints', async () => {
+    withTasks('nine', 'bcmd22222')
+    const path = transcript([
+      ranInBackground('until [ -e /tmp/free ]; do sleep 60; done', 'toolu_one'),
+      resultOf('toolu_one', backgrounded('nine', 'bcmd22222'))
+    ])
+    expect((await pendingWork('nine', path))?.doing).toBe('waiting')
+  })
+
+  /** The call and its result land in different sweeps, and only the call carries the command. */
+  it('holds the command across two reads, so a later result still says it was a wait', async () => {
+    withTasks('ten', 'bcmd33333')
+    const path = transcript([ranInBackground('while true; do sleep 30; done', 'toolu_two')])
+    appendFileSync(
+      path,
+      JSON.stringify(resultOf('toolu_two', backgrounded('ten', 'bcmd33333'))) + '\n'
+    )
+    expect((await pendingWork('ten', path))?.doing).toBe('waiting')
+  })
+
+  it('leaves a command that only mentions sleep alone', async () => {
+    withTasks('eleven', 'bcmd44444')
+    const path = transcript([
+      ranInBackground('make check  # the gate sleeps on nothing', 'toolu_three'),
+      resultOf('toolu_three', backgrounded('eleven', 'bcmd44444'))
+    ])
+    expect((await pendingWork('eleven', path))?.doing).toBe('working')
   })
 })
 
