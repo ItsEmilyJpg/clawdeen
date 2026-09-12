@@ -4,7 +4,7 @@ import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../s
 import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
 import { branchAt, githubPrs, gitlabMr, isPullRequest, remote, viewPr, workingCopy } from './forge'
-import { branches, records, type SessionRecord } from './records'
+import { branches, openSession, records, type SessionRecord } from './records'
 import { record, today } from './history'
 import { liveAt, liveState } from './live'
 import { order } from './order'
@@ -233,7 +233,8 @@ async function describe(
   now: number,
   index: Map<string, string>,
   config: GateConfig | null,
-  trackers: { [key: string]: string }
+  trackers: { [key: string]: string },
+  open: string | null
 ): Promise<Session> {
   const path = index.get(opened.cliSessionId ?? '')
   const doing = await activity(opened, now, index, config)
@@ -299,7 +300,8 @@ async function describe(
     about:
       doing.word?.startsWith('čeká na') && path ? ((await watchedFor(path))?.about ?? null) : null,
     since: doing.since,
-    pinned: Boolean(record.isStarred)
+    pinned: Boolean(record.isStarred),
+    focused: record.sessionId === open
   }
 }
 
@@ -312,8 +314,9 @@ export async function board(): Promise<Board> {
     records(now),
     order()
   ])
+  const open = openSession(found)
   const sessions = await Promise.all(
-    found.map((record) => describe(record, now, index, config, trackers))
+    found.map((record) => describe(record, now, index, config, trackers, open))
   )
   // Where she dragged a card wins over everything. Otherwise what she pinned in Claude comes first,
   // then what stands on her answer, and the rest stays in the order it last moved.
