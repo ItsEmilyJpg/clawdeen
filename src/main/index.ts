@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   Notification,
   shell,
   Tray
@@ -14,7 +15,7 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { watch } from 'node:fs'
 import { join } from 'node:path'
 
-import type { Board, Session, StateWord } from '../shared/types'
+import type { Board, Session, StateWord, ThemeMode } from '../shared/types'
 import { board } from './board'
 import { chat } from './chat'
 import { transcripts } from './transcripts'
@@ -29,6 +30,9 @@ import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
 /** The app focuses this session; "last" is the only other value it accepts. */
 const APP_SESSION = 'claude://code/continue?session='
 const MENU_LIMIT = 15
+/** `--ground` of each theme, so the window is never a colour the page is about to replace. */
+const DARK_GROUND = '#10161c'
+const LIGHT_GROUND = '#f4f5f7'
 
 type Dot = 'green' | 'amber' | 'red' | 'blue' | 'purple' | 'grey'
 
@@ -107,7 +111,7 @@ function createWindow(): void {
     // Without this the first click into an unfocused window only raises it, so everything on the
     // board needs clicking twice.
     acceptFirstMouse: true,
-    backgroundColor: '#10161c',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? DARK_GROUND : LIGHT_GROUND,
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
   })
 
@@ -345,6 +349,12 @@ void app.whenReady().then(() => {
   ipcMain.handle('order', async (_event, ids: string[]) => {
     await keepOrder(ids)
     await refresh()
+  })
+  // The window frame is not the page: the traffic lights and the colour behind an unpainted window
+  // come from the native theme, and the page's own choice has to reach it or the two disagree.
+  ipcMain.handle('theme', (_event, mode: ThemeMode) => {
+    nativeTheme.themeSource = mode
+    window?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? DARK_GROUND : LIGHT_GROUND)
   })
 
   // A template image is the menu bar's own black and white; the count rides beside it as the title.
