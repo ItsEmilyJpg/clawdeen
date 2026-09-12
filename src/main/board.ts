@@ -140,6 +140,8 @@ function githubIssue(
 interface Doing2 {
   word: ActivityWord | null
   since: number | null
+  /** What is running beside it, where the session is doing something of its own as well. */
+  extra: ActivityWord | null
 }
 
 async function activity(
@@ -148,51 +150,52 @@ async function activity(
   index: Map<string, string>,
   config: GateConfig | null
 ): Promise<Doing2> {
-  const standing = await gateState(record, config)
-  if (standing) return { word: standing, since: null }
   const cli = record.cliSessionId ?? ''
   const path = index.get(cli)
-  if (!path) return { word: null, since: null }
+  const nothing = { word: null, since: null, extra: null }
+  if (!path) return nothing
   let age: number
   try {
     age = now - (await modified(path))
   } catch {
-    return { word: null, since: null }
+    return nothing
   }
-  if (age > PENDING_SECONDS) return { word: null, since: null }
-  // What a hook said beats what the files say, as long as it is the newer of the two: the hooks are
-  // the fast path and the files are what answers when nothing is listening.
+  if (age > PENDING_SECONDS) return nothing
+
+  // What the session left running: a gate of its own, a queued one, or a task in the background.
+  const gate = await gateState(record, config)
+  const doing = gate
+    ? null
+    : await pendingWork(
+        cli,
+        path,
+        config ? { queueing: config.queueing, running: config.runningLine } : undefined
+      )
+  const beside = gate ?? (doing && doing.doing !== 'watching' ? DOING[doing.doing] : null)
+  const since = gate ? null : (doing?.since ?? null)
+
+  // What a hook said beats what the files say: the hooks are the fast path, the files answer when
+  // nothing is listening. The app saying it needs her is the one thing no file says at all.
   const live = liveState(cli, now)
   const heard = liveAt(cli) ?? 0
-  // The app saying it needs her is the one thing no file can say, so it stands until the session
-  // moves again; the rest only beats the files while it is the newer of the two.
-  if (live === 'asking' && heard > now - WAITING_SECONDS)
-    return { word: 'čeká na tebe', since: null }
-  // A working session calls a tool every few seconds, so a hook this recent means it is still going,
-  // whatever the transcript happens to have been written last.
-  if (live === 'working' && heard > now - HEARD_FRESH) return { word: 'pracuje', since: null }
   const turn = await lastTurn(path)
-  // An unanswered question is hers to close, whatever else the session has running.
-  if (turn === 'asking') return { word: 'čeká na tebe', since: null }
-  // What Claude is doing itself comes before what it left running in the background: a session with
-  // a watcher up is still working while the answer is being written. The whole window counts, or a
-  // tool that takes longer than a few minutes would flip the row to the watcher and back again.
-  if (turn === 'running' && age < WAITING_SECONDS) return { word: 'pracuje', since: null }
-  // A quiet transcript is not a quiet session: what it left running is asked before it is written
-  // off, which is how a watcher that has been up for an hour keeps its row.
-  const doing = await pendingWork(
-    cli,
-    path,
-    config ? { queueing: config.queueing, running: config.runningLine } : undefined
-  )
-  // A monitor only ever runs beside a finished turn, and then she is the one who can act: the
-  // watcher is what the row says beside the state, not instead of it.
-  if (doing) {
-    const word = doing.doing === 'watching' ? 'čeká na tebe' : DOING[doing.doing]
-    return { word, since: doing.since }
-  }
-  if (age > WAITING_SECONDS || turn === 'running') return { word: null, since: null }
-  return { word: 'čeká na tebe', since: null }
+  const asking = (live === 'asking' && heard > now - WAITING_SECONDS) || turn === 'asking'
+  // A session parked on a task's output is not working, it is waiting for that task to finish: the
+  // tool it is sitting on is what says which of the two it is.
+  const working =
+    turn !== 'blocked' &&
+    ((live === 'working' && heard > now - HEARD_FRESH) ||
+      (turn === 'running' && age < WAITING_SECONDS))
+
+  // Both can be true at once, and then what Claude is doing is the state while the gate rides
+  // beside it: a session answering is working, even with a check queueing behind it.
+  if (asking) return { word: 'čeká na tebe', since: null, extra: beside }
+  if (working) return { word: 'pracuje', since, extra: beside }
+  if (beside) return { word: beside, since, extra: null }
+  // A monitor only ever runs beside a finished turn, and then she is the one who can act.
+  if (doing?.doing === 'watching') return { word: 'čeká na tebe', since: null, extra: null }
+  if (age > WAITING_SECONDS || turn === 'running' || turn === 'blocked') return nothing
+  return { word: 'čeká na tebe', since: null, extra: null }
 }
 
 async function describe(
@@ -249,6 +252,7 @@ async function describe(
     changes,
     state,
     activity: doing.word,
+    extra: doing.extra,
     heard: liveState(record.cliSessionId ?? '', now),
     about: doing.word === 'čeká na tebe' && path ? await watchedFor(path) : null,
     since: doing.since,

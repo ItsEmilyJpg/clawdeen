@@ -17,8 +17,12 @@ export function inWords(seconds: number): string {
   return `${Math.floor(whole / 86400)} d ${Math.floor((whole % 86400) / 3600)} h`
 }
 
-export function clock(moment: number): string {
-  return new Date(moment * 1000).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
+export function clock(moment: number, seconds = false): string {
+  return new Date(moment * 1000).toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(seconds ? { second: '2-digit' } : {})
+  })
 }
 
 /**

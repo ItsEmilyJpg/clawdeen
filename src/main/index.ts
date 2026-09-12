@@ -1,5 +1,15 @@
 import type { MenuItemConstructorOptions, NativeImage } from 'electron'
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  Notification,
+  shell,
+  Tray
+} from 'electron'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { watch } from 'node:fs'
 import { join } from 'node:path'
@@ -8,6 +18,7 @@ import type { Board, Session, StateWord } from '../shared/types'
 import { board } from './board'
 import { chat } from './chat'
 import { transcripts } from './transcripts'
+import { hooksInstalled, installHooks, removeHooks } from './hooks'
 import { listen } from './live'
 import { keepOrder } from './order'
 import { lastBounds, rememberBounds } from './window-state'
@@ -55,14 +66,16 @@ const DOT: { [key in StateWord]: Dot } = {
 
 const drawn = new Map<Dot, NativeImage>()
 
-function dot(colour: Dot): NativeImage {
-  const held = drawn.get(colour)
+function dot(colour: Dot | undefined): NativeImage {
+  // The history keeps words this version no longer has, and a menu is not worth a crash.
+  const known: Dot = colour && colour in DOT_IMAGE ? colour : 'grey'
+  const held = drawn.get(known)
   if (held) return held
-  const [name, hue] = DOT_IMAGE[colour]
+  const [name, hue] = DOT_IMAGE[known]
   const image = nativeImage
     .createFromNamedImage(name, [hue, 0.5, 0.5])
     .resize({ width: 12, height: 12 })
-  drawn.set(colour, image)
+  drawn.set(known, image)
   return image
 }
 
@@ -78,6 +91,7 @@ let waiting = new Set<string>()
 let announced = false
 let settling: NodeJS.Timeout | null = null
 let leaving = false
+let wired = false
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -142,7 +156,9 @@ function link(label: string, url: string, colour: Dot): MenuItemConstructorOptio
 function trayRows(session: Session): MenuItemConstructorOptions[] {
   const change = session.change
   const doing = session.activity
-    ? `${session.activity}${session.about ? ` · ${session.about}` : ''}`
+    ? [session.activity + (session.about ? ` · ${session.about}` : ''), session.extra]
+        .filter(Boolean)
+        .join(' + ')
     : ''
   const rows: MenuItemConstructorOptions[] = [
     link(
@@ -204,6 +220,12 @@ function trayMenu(current: Board | null): Menu {
     { label: 'Otevřít přehled', click: show },
     { label: 'Obnovit', click: () => void refresh() },
     {
+      label: 'Hlásit stav z Claude hooků',
+      type: 'checkbox',
+      checked: wired,
+      click: () => void wire(!wired)
+    },
+    {
       label: 'Spouštět po přihlášení',
       type: 'checkbox',
       checked: app.getLoginItemSettings().openAtLogin,
@@ -211,6 +233,42 @@ function trayMenu(current: Board | null): Menu {
     },
     { label: 'Ukončit', click: () => app.quit() }
   ])
+}
+
+/**
+ * The hook has to be written into the Claude settings, which are hers, so it is asked for rather
+ * than done: whoever downloads a build has no checkout to run an installer from.
+ */
+async function wire(on: boolean): Promise<void> {
+  if (on) {
+    const { response } = await dialog.showMessageBox({
+      type: 'question',
+      message: 'Zapojit stav ze session do desky?',
+      detail:
+        'Přidá se hook do ~/.claude/settings.json, který při každé události pošle na loopback, co ' +
+        'session dělá. Co tam je teď, se uloží vedle jako settings.json.before-board. Session, ' +
+        'které už běží, ho načtou po /hooks nebo po restartu.',
+      buttons: ['Zapojit', 'Nechat být'],
+      defaultId: 0,
+      cancelId: 1
+    })
+    if (response !== 0) return
+    try {
+      const kept = await installHooks()
+      wired = true
+      await dialog.showMessageBox({ message: 'Hooky jsou zapojené.', detail: `Záloha: ${kept}` })
+    } catch (error) {
+      await dialog.showMessageBox({
+        type: 'error',
+        message: 'Nešlo to',
+        detail: (error as Error).message
+      })
+    }
+  } else {
+    await removeHooks()
+    wired = false
+  }
+  await refresh()
 }
 
 /** Only the turn into waiting is news; a session that has been waiting all along must not ring again. */
@@ -241,10 +299,15 @@ async function refresh(): Promise<void> {
     console.error(`board: ${(error as Error).stack}`)
     return
   }
-  announce(latest.sessions)
-  tray?.setTitle(trayTitle(latest.sessions))
-  tray?.setContextMenu(trayMenu(latest))
+  // The window is told first and separately: a tray that cannot draw itself must not stop the board.
   if (window && !window.isDestroyed()) window.webContents.send('board', latest)
+  try {
+    announce(latest.sessions)
+    tray?.setTitle(trayTitle(latest.sessions))
+    tray?.setContextMenu(trayMenu(latest))
+  } catch (error) {
+    console.error(`tray: ${(error as Error).stack}`)
+  }
 }
 
 function settle(): void {
@@ -287,6 +350,12 @@ void app.whenReady().then(() => {
   tray = new Tray(bar)
   tray.setToolTip('Claude session')
   tray.on('click', show)
+
+  void hooksInstalled()
+    .then((found) => {
+      wired = found
+    })
+    .catch(() => undefined)
 
   createWindow()
   void refresh()

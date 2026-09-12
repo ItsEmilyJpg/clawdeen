@@ -45,7 +45,10 @@ for (const event of EVENTS) {
     continue
   }
   if (already) continue
-  groups.push({ hooks: [{ type: 'command', command: INSTALLED, timeout: 5 }] })
+  // PreToolUse and PostToolUse are matched against the tool name; the rest take no matcher at all.
+  const group = { hooks: [{ type: 'command', command: INSTALLED, timeout: 5 }] }
+  if (event.endsWith('ToolUse')) group.matcher = '*'
+  groups.push(group)
   touched += 1
 }
 
