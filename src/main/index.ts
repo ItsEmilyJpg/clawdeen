@@ -17,6 +17,7 @@ import { join } from 'node:path'
 
 import type { Board, Session, StateWord, ThemeMode } from '../shared/types'
 import { board } from './board'
+import { claimCard, underClaim, type Claim } from './focus'
 import { openSession, records } from './records'
 import { chat } from './chat'
 import { transcripts } from './transcripts'
@@ -95,8 +96,6 @@ const SETTLE = 400
  * above adds its own 400 and restarts on the next write.
  */
 const FOCUS_SETTLE = 60
-/** How long the board's own claim outranks the records. Past this the app is simply not agreeing. */
-const CLAIM_TTL = 8000
 /** Nothing watches a lock inside a worktree or a pull request on GitHub, so the board is swept anyway. */
 const SWEEP = 15_000
 
@@ -112,7 +111,12 @@ let focusing: NodeJS.Timeout | null = null
  * click, and every pass in between reads that stale record: without this the mark set on opening is
  * wiped by the next sweep and the wait is back.
  */
-let claimed: { id: string; at: number; wasOpen: string | null } | null = null
+let claimed: Claim | null = null
+/**
+ * What the records last said, which is what a claim is measured against. Never the mark on the
+ * board: that one is the previous claim talking, and a claim answering itself is the flicker.
+ */
+let recorded: string | null = null
 let leaving = false
 let wired = false
 
@@ -355,19 +359,12 @@ async function focusPass(): Promise<void> {
   }
 }
 
-/**
- * The claim outranks the records only while they still say what they said when it was made. The
- * moment they move at all the records win, whether they have caught up with the claim or she has
- * since opened something else in the app herself: a board that insists on a card she has left is
- * worse than one that is late.
- */
+/** The one door the records come through, so every reading of them is measured against the claim. */
 function withClaim(open: string | null): string | null {
-  if (!claimed) return open
-  if (open !== claimed.wasOpen || Date.now() - claimed.at > CLAIM_TTL) {
-    claimed = null
-    return open
-  }
-  return claimed.id
+  recorded = open
+  const { focus, held } = underClaim(claimed, open, Date.now())
+  claimed = held
+  return focus
 }
 
 /** A whole board is built with the records' idea of focus, which the claim has to survive. */
@@ -401,11 +398,7 @@ function openUrl(url: string): void {
   if (url.startsWith(APP_SESSION)) {
     const id = url.slice(APP_SESSION.length)
     if (latest?.sessions.some((session) => session.id === id)) {
-      claimed = {
-        id,
-        at: Date.now(),
-        wasOpen: latest.sessions.find((session) => session.focused)?.id ?? null
-      }
+      claimed = claimCard(claimed, id, recorded, Date.now())
       markFocused(id)
     }
   }
