@@ -491,7 +491,8 @@ h1 {
 }
 
 .lane h2.s-task,
-.lane h2.s-gate {
+.lane h2.s-gate,
+.lane h2.s-running {
   color: var(--info);
 }
 
