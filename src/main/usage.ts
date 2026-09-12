@@ -1,24 +1,34 @@
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
 import type { UsageWindow } from '../shared/types'
 import { burnOf } from '../shared/words'
-import { USAGE, USAGE_REFRESH } from './paths'
+import { CLI_CONFIG, USAGE, USAGE_REFRESH } from './paths'
 
 const run = promisify(execFile)
 
 const TTL = 900
-const STALE = 3600
+// Two refresh cycles missed: one is the normal gap, two means the number is standing still.
+const STALE = TTL * 2
 const WINDOWS: [string, string, string][] = [
   ['five_hour', '5 hodin', '5 h'],
   ['seven_day', '7 dní', '7 d']
 ]
 
+interface StoredWindow {
+  used_percentage?: number
+  resets_at?: number
+  duration_minutes?: number
+}
+
 interface Stored {
   captured_at?: number
-  [key: string]:
-    { used_percentage?: number; resets_at?: number; duration_minutes?: number } | number | undefined
+  /** Whose numbers these are, stamped by the refresh script; absent on a cache written before it. */
+  account?: string
+  /** What the last refresh failed on, left there by the same script. */
+  error?: string
+  [key: string]: StoredWindow | string | number | undefined
 }
 
 async function stored(): Promise<Stored> {
@@ -29,6 +39,38 @@ async function stored(): Promise<Stored> {
       console.warn(`${USAGE}: ${(error as Error).name}`)
     return {}
   }
+}
+
+let account: { at: number; name: string | null } | null = null
+
+/**
+ * The account the CLI is logged into, remembered until its file changes.
+ *
+ * Re-parsing a 130 kB file on every board refresh to answer a question that changes twice a year
+ * is the kind of thing that makes a board feel slow for no reason.
+ */
+async function cliAccount(): Promise<string | null> {
+  let at: number
+  try {
+    at = (await stat(CLI_CONFIG)).mtimeMs
+  } catch {
+    return null
+  }
+  if (account && account.at === at) return account.name
+  let name: string | null = null
+  try {
+    const config = JSON.parse(await readFile(CLI_CONFIG, 'utf8')) as {
+      oauthAccount?: { emailAddress?: string; organizationName?: string }
+    }
+    const { emailAddress, organizationName } = config.oauthAccount ?? {}
+    // The same shape the refresh script stamps into the cache, or the comparison never matches.
+    if (emailAddress)
+      name = organizationName ? `${emailAddress} · ${organizationName}` : emailAddress
+  } catch {
+    name = null
+  }
+  account = { at, name }
+  return name
 }
 
 export async function usage(now: number): Promise<UsageWindow[]> {
@@ -42,6 +84,12 @@ export async function usage(now: number): Promise<UsageWindow[]> {
       console.warn(`${USAGE_REFRESH}: ${(error as Error).message.split('\n')[0]}`)
     }
   }
+  // The script exits zero on a failed refresh and leaves the reason behind, so the exit code above
+  // says nothing. Whether the numbers are current is only readable here.
+  const failed = typeof data.error === 'string' ? data.error : null
+  const stamped = typeof data.account === 'string' ? data.account : null
+  const current = stamped ? await cliAccount() : null
+  const otherAccount = stamped && current && stamped !== current ? stamped : null
   const windows: UsageWindow[] = []
   for (const [key, label, short] of WINDOWS) {
     const window = data[key]
@@ -61,7 +109,10 @@ export async function usage(now: number): Promise<UsageWindow[]> {
       left,
       pace: gone > 0.05 ? used / (gone * 100) : null,
       burn: burnOf(used, left, minutes),
-      stale: age > STALE ? age : null
+      // A failed refresh makes any age worth saying: the number is not standing still by chance.
+      stale: age > STALE || (failed !== null && age > TTL) ? age : null,
+      error: failed,
+      otherAccount
     })
   }
   return windows
