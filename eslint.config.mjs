@@ -6,7 +6,18 @@ import vueParser from 'vue-eslint-parser'
 
 export default defineConfig(
   // The icon renderer is a plain Electron entry point, so it is CommonJS and not part of the app.
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'tools/icons/**', 'tools/hook/**'] },
+  // A worktree under .claude is another session's copy of this tree; its files are not ours to
+  // judge, and the ignores above are written against this tree's paths rather than that one's.
+  {
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      '**/out',
+      '.claude/**',
+      'tools/icons/**',
+      'tools/hook/**'
+    ]
+  },
   tseslint.configs.recommended,
   eslintPluginVue.configs['flat/recommended'],
   {
