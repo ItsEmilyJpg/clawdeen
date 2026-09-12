@@ -24,6 +24,12 @@ const ticking = ref(remembered('ticking') === '1')
 const expanded = ref(remembered('expanded') === '1')
 /** Two ways to read the same board: the order she arranged, or the workflow the states make. */
 const workflow = ref(remembered('workflow') === '1')
+/**
+ * Whether the card of the session open in the app is outlined. Off unless she has asked for it:
+ * the app writes its focus one to three and a half seconds after the click, so the outline sits on
+ * the wrong card for that long, and a mark that is wrong some of the time is worse than none.
+ */
+const markFocus = ref(remembered('markFocus') === '1')
 const PROJECT_MARKS: { value: ProjectMark; label: string }[] = [
   { value: 'stripe', label: 'barevný proužek' },
   { value: 'name', label: 'jméno repozitáře' },
@@ -108,6 +114,11 @@ function orderBy(state: boolean): void {
 function tick(on: boolean): void {
   ticking.value = on
   keep('ticking', on)
+}
+
+function markFocusing(on: boolean): void {
+  markFocus.value = on
+  keep('markFocus', on)
 }
 
 // The menu holds more than one choice now, so a choice no longer closes it: she is as likely to be
@@ -316,6 +327,17 @@ onUnmounted(() => {
             >
               {{ mark.label }}
             </button>
+            <p class="what">Aktivní okno <span class="beta">beta</span></p>
+            <button
+              :class="['choice', { on: markFocus }]"
+              title="Appka svůj focus zapisuje se zpožděním, takže rámeček chvíli sedí na cizí kartě."
+              @click="markFocusing(true)"
+            >
+              zvýraznit
+            </button>
+            <button :class="['choice', { on: !markFocus }]" @click="markFocusing(false)">
+              neoznačovat
+            </button>
             <p class="what">Vlastní pořadí</p>
             <button class="choice" :disabled="board.order.length === 0" @click="forget()">
               {{ board.order.length > 0 ? 'zapomenout' : 'žádné není' }}
@@ -376,6 +398,7 @@ onUnmounted(() => {
             :dragging="false"
             laned
             :project="project"
+            :mark-focus="markFocus"
             @peek="reading = session.id"
             @detail="opened = { id: session.id, ...$event }"
           />
@@ -391,6 +414,7 @@ onUnmounted(() => {
         :session="session"
         :dragging="dragged === session.id"
         :project="project"
+        :mark-focus="markFocus"
         @grab="dragged = session.id"
         @drop="drop(session)"
         @peek="reading = session.id"
@@ -582,6 +606,17 @@ h1 {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* Beside the heading rather than on the choice: it is the whole section that is not finished. */
+.menu .beta {
+  margin-left: 5px;
+  padding: 0 4px;
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 9px;
+  letter-spacing: 0.06em;
 }
 
 /* Every section but the first stands off the choices above it, or the menu reads as one long list. */

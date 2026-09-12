@@ -8,6 +8,8 @@ const props = defineProps<{
   session: Session
   dragging: boolean
   project: ProjectMark
+  /** Whether the session open in the app is marked at all; off until she asks for it in the menu. */
+  markFocus: boolean
   laned?: boolean
 }>()
 const emit = defineEmits<{
@@ -137,7 +139,12 @@ function open(url: string): void {
     :class="[
       'card',
       dot,
-      { active: session.active, pinned: session.pinned, focused: session.focused, dragging }
+      {
+        active: session.active,
+        pinned: session.pinned,
+        focused: markFocus && session.focused,
+        dragging
+      }
     ]"
     ref="card"
     draggable="true"
