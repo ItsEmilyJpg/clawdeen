@@ -38,12 +38,19 @@ function keep(key: string, on: boolean): void {
   }
 }
 
-/** The workflow board, in lanes: what waits on her first, what is only queueing last. */
+/** Every word a lane of its own carries, so the last lane knows what is left over. */
+const LANED = new Set(LANES.map((lane) => lane.word).filter(Boolean))
+
+/**
+ * The workflow board, in lanes: what waits on her first, what is only queueing last. The last lane
+ * takes a session with no state and a session whose state has no lane alike, because a word that
+ * belongs nowhere took the row off the board entirely.
+ */
 const lanes = computed(() =>
   LANES.map((lane) => ({
     ...lane,
     sessions: shown.value.filter((session) =>
-      lane.word ? session.activity === lane.word : session.activity === null
+      lane.word ? session.activity === lane.word : !LANED.has(session.activity)
     )
   })).filter((lane) => lane.sessions.length > 0)
 )
