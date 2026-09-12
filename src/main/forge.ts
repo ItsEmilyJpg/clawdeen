@@ -14,7 +14,7 @@ const PR_FIELDS =
 const STATES: { [key: string]: StateWord } = {
   open: 'otevřené',
   opened: 'otevřené',
-  merged: 'sloučené',
+  merged: 'merged',
   closed: 'zavřené'
 }
 const OPEN_STATES = new Set(['open', 'opened'])
@@ -113,6 +113,7 @@ interface RollupEntry {
   detailsUrl?: string
   targetUrl?: string
   startedAt?: string
+  completedAt?: string
 }
 
 /** A completed run carries its verdict in conclusion, a running one has none and only a status. */
@@ -124,11 +125,13 @@ export function checksOf(rollup: RollupEntry[] | undefined): {
   const verdicts: string[] = []
   const failed: Job[] = []
   const started: number[] = []
+  const finished: number[] = []
   let done = 0
   for (const entry of rollup ?? []) {
     const verdict = (entry.conclusion || entry.state || entry.status || '').toUpperCase()
     verdicts.push(verdict)
     if (entry.startedAt) started.push(Date.parse(entry.startedAt) / 1000)
+    if (entry.completedAt) finished.push(Date.parse(entry.completedAt) / 1000)
     if (!CHECKS_RUNNING.has(verdict)) done += 1
     if (CHECKS_RED.has(verdict)) {
       failed.push({
@@ -141,7 +144,8 @@ export function checksOf(rollup: RollupEntry[] | undefined): {
     done,
     total: verdicts.length,
     failed: failed.length,
-    since: started.length > 0 ? Math.min(...started) : null
+    since: started.length > 0 ? Math.min(...started) : null,
+    until: finished.length > 0 && finished.length === verdicts.length ? Math.max(...finished) : null
   }
   // A job that failed early is worth saying even while the rest of the run is still going.
   if (failed.length > 0) return { checks: 'CI červené', failed, progress }
@@ -258,7 +262,7 @@ export async function gitlabMr(
         branch: mr.source_branch ?? null,
         checks: null,
         failed: [],
-        progress: { done: 0, total: 0, failed: 0, since: null },
+        progress: { done: 0, total: 0, failed: 0, since: null, until: null },
         conflict: Boolean(mr.has_conflicts),
         review: null,
         issues: []

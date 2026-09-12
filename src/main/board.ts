@@ -23,6 +23,7 @@ const STATE_WORDS: StateWord[] = [
   'gate běží',
   'gate ve frontě',
   'úloha běží',
+  'úloha čeká',
   'čeká na tebe',
   'bez PR',
   'koncept',
@@ -32,7 +33,7 @@ const STATE_WORDS: StateWord[] = [
   'změny žádané',
   'k mergi',
   'k review',
-  'sloučené',
+  'merged',
   'zavřené'
 ]
 
@@ -131,7 +132,8 @@ async function activity(
   const turn = await lastTurn(path)
   // An unanswered question is hers to close, whatever else the session has running.
   if (turn === 'asking') return 'čeká na tebe'
-  if (await pendingWork(cli, path)) return 'úloha běží'
+  const doing = await pendingWork(cli, path)
+  if (doing) return doing === 'working' ? 'úloha běží' : 'úloha čeká'
   if (age > WAITING_SECONDS) return null
   if (turn === 'running') return age < ACTIVE_SECONDS ? 'pracuje' : null
   return 'čeká na tebe'

@@ -3,6 +3,7 @@ export type StateWord =
   | 'gate běží'
   | 'gate ve frontě'
   | 'úloha běží'
+  | 'úloha čeká'
   | 'čeká na tebe'
   | 'bez PR'
   | 'koncept'
@@ -13,12 +14,12 @@ export type StateWord =
   | 'k mergi'
   | 'k review'
   | 'otevřené'
-  | 'sloučené'
+  | 'merged'
   | 'zavřené'
 
 export type ActivityWord = Extract<
   StateWord,
-  'pracuje' | 'gate běží' | 'gate ve frontě' | 'úloha běží' | 'čeká na tebe'
+  'pracuje' | 'gate běží' | 'gate ve frontě' | 'úloha běží' | 'úloha čeká' | 'čeká na tebe'
 >
 
 export interface Link {
@@ -39,6 +40,8 @@ export interface Progress {
   failed: number
   /** When the earliest check started, so a row can say how long it has been running. */
   since: number | null
+  /** When the last one finished, so a run that is over can say how long ago that was. */
+  until: number | null
 }
 
 export interface Change extends Link {
@@ -77,6 +80,8 @@ export interface UsageWindow {
   resets: number
   left: number
   pace: number | null
+  /** Seconds until the window is spent at the pace so far, or null while nothing has been spent. */
+  burn: number | null
   stale: number | null
 }
 

@@ -1,6 +1,6 @@
 import type { StateWord } from '../../shared/types'
 
-export { ago, clock, inWords, stateLabel } from '../../shared/words'
+export { ago, burnVerdict, clock, inWords, stateLabel } from '../../shared/words'
 
 /** One class per word, the same names the stylesheet colours. */
 export const STATE_CLASS: { [key in StateWord]: string } = {
@@ -8,6 +8,7 @@ export const STATE_CLASS: { [key in StateWord]: string } = {
   'gate běží': 's-gate',
   'gate ve frontě': 's-queued',
   'úloha běží': 's-task',
+  'úloha čeká': 's-queued',
   'čeká na tebe': 's-waiting',
   'bez PR': 's-none',
   koncept: 's-draft',
@@ -18,7 +19,7 @@ export const STATE_CLASS: { [key in StateWord]: string } = {
   'k mergi': 's-mergeable',
   'k review': 's-review',
   otevřené: 's-review',
-  sloučené: 's-merged',
+  merged: 's-merged',
   zavřené: 's-closed'
 }
 

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
 import type { UsageWindow } from '../shared/types'
+import { burnOf } from '../shared/words'
 import { USAGE, USAGE_REFRESH } from './paths'
 
 const run = promisify(execFile)
@@ -49,6 +50,7 @@ export async function usage(now: number): Promise<UsageWindow[]> {
     if (used === undefined || !resets || !minutes) continue
     // Spent against the share of the window that is gone: above one is faster than it refills.
     const gone = Math.min(1, Math.max(0, 1 - (resets - now) / (minutes * 60)))
+    const left = Math.max(0, resets - now)
     const age = now - (data.captured_at ?? 0)
     windows.push({
       key,
@@ -56,8 +58,9 @@ export async function usage(now: number): Promise<UsageWindow[]> {
       short,
       used,
       resets,
-      left: Math.max(0, resets - now),
+      left,
       pace: gone > 0.05 ? used / (gone * 100) : null,
+      burn: burnOf(used, left, minutes),
       stale: age > STALE ? age : null
     })
   }
