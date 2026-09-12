@@ -216,6 +216,7 @@ onUnmounted(() => {
             :key="session.id"
             :session="session"
             :dragging="false"
+            laned
             @peek="reading = session.id"
           />
         </ul>
@@ -241,8 +242,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Wide enough that a long name is read rather than guessed: the columns beside it are fixed, so
+   every pixel a wider window gives goes to the one thing that tells the rows apart. */
 .shell {
-  max-width: 980px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 0 20px 28px;
 }
