@@ -5,7 +5,7 @@ import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
 import { branchAt, githubPrs, gitlabMr, isPullRequest, remote, viewPr, workingCopy } from './forge'
 import { branches, openSession, records, type SessionRecord } from './records'
-import { record, today } from './history'
+import { record, standing, today } from './history'
 import { liveAt, liveState } from './live'
 import { order } from './order'
 import {
@@ -148,11 +148,16 @@ function githubIssue(
 }
 
 /** What a session is doing, and since when where something of its own is running. */
-interface Doing2 {
+export interface Doing2 {
   word: ActivityWord | null
   since: number | null
   /** What is running beside it, where the session is doing something of its own as well. */
   extra: ActivityWord | null
+  /**
+   * True where `čeká na tebe` is only the fallback: the turn is over and nothing of its own is
+   * running, which is a guess at her being next, not the session asking for anything.
+   */
+  idle?: boolean
 }
 
 async function activity(
@@ -212,7 +217,18 @@ async function activity(
     return { word, since: null, extra: null }
   }
   if (age > WAITING_SECONDS || turn === 'running' || turn === 'blocked') return nothing
-  return { word: 'čeká na tebe', since: null, extra: null }
+  return { word: 'čeká na tebe', since: null, extra: null, idle: true }
+}
+
+/**
+ * What the silence after a finished turn is about. A session that stopped with a run going on its
+ * own change is waiting on that run, not on her, and the fallback above cannot see it: the checks
+ * are read off the change, which is only known once the working copy is. A session that asked
+ * something keeps ringing, because that question is hers whatever the run does.
+ */
+export function waitingOn(doing: Doing2, change: Change | null): ActivityWord | null {
+  if (!doing.idle || change?.checks !== 'CI běží') return doing.word
+  return 'čeká na CI'
 }
 
 /**
@@ -277,6 +293,7 @@ async function describe(
   const last = (record.lastActivityAt ?? 0) / 1000
   const title = (record.title ?? '(bez názvu)').split(/\s+/).join(' ')
   const state = displayState(change)
+  const word = waitingOn(doing, change)
   return {
     id: record.sessionId,
     cli: record.cliSessionId ?? '',
@@ -294,12 +311,18 @@ async function describe(
     change,
     changes,
     state,
-    activity: doing.word,
+    activity: word,
     extra: doing.extra,
     heard: liveState(record.cliSessionId ?? '', now),
+    // A wait the board worked out from the change has no monitor behind it, so nothing names it:
+    // the run it is about is already on the row as the state.
     about:
-      doing.word?.startsWith('čeká na') && path ? ((await watchedFor(path))?.about ?? null) : null,
+      word === doing.word && word?.startsWith('čeká na') && path
+        ? ((await watchedFor(path))?.about ?? null)
+        : null,
     since: doing.since,
+    // Filled in by board() from the stretch history, which describing one session cannot see.
+    entered: null,
     pinned: Boolean(record.isStarred),
     focused: record.sessionId === open
   }
@@ -318,6 +341,18 @@ export async function board(): Promise<Board> {
   const sessions = await Promise.all(
     found.map((record) => describe(record, now, index, config, trackers, open))
   )
+  // How long a card has stood where it stands, off the stretch the last pass left open, so a lane
+  // can hold its order while the sessions in it work. A word that has only just changed has no
+  // stretch under it yet, and a session doing nothing never gets one.
+  const began = standing()
+  for (const session of sessions) {
+    const held = began.get(session.id)
+    session.entered = session.activity
+      ? held?.word === session.activity
+        ? held.began
+        : Math.round(now)
+      : null
+  }
   // Where she dragged a card wins over everything. Otherwise what she pinned in Claude comes first,
   // then what stands on her answer, and the rest stays in the order it last moved.
   const placed = (session: Session): number => {

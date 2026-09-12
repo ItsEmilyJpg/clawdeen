@@ -91,6 +91,11 @@ export interface Session {
   about: string | null
   /** When the task it is waiting on started, so a row can say a long one has been on too long. */
   since: number | null
+  /**
+   * When the session entered the state it is in, read off the stretch history, so a lane can hold
+   * its order while the cards in it keep working. Null where the session is doing nothing.
+   */
+  entered: number | null
   /** What the hooks last said about this session, or null where none of them has been heard from. */
   heard: string | null
   pinned: boolean

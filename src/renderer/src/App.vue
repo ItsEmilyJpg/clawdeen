@@ -6,7 +6,7 @@ import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
 import SessionDetail from './components/SessionDetail.vue'
 import UsageBar from './components/UsageBar.vue'
-import { clock, inWords, LANES, STATE_CLASS, STATE_ORDER } from './words'
+import { clock, inLane, inWords, LANES, STATE_CLASS, STATE_ORDER } from './words'
 
 type Filter = StateWord | 'pinned' | ''
 
@@ -68,9 +68,11 @@ const LANED = new Set(LANES.map((lane) => lane.word).filter(Boolean))
 const lanes = computed(() =>
   LANES.map((lane) => ({
     ...lane,
-    sessions: shown.value.filter((session) =>
-      lane.word ? session.activity === lane.word : !LANED.has(session.activity)
-    )
+    sessions: shown.value
+      .filter((session) =>
+        lane.word ? session.activity === lane.word : !LANED.has(session.activity)
+      )
+      .sort(inLane(board.value.order))
   })).filter((lane) => lane.sessions.length > 0)
 )
 
@@ -516,7 +518,8 @@ h1 {
 }
 
 .lane h2.s-task,
-.lane h2.s-gate {
+.lane h2.s-gate,
+.lane h2.s-running {
   color: var(--info);
 }
 

@@ -66,12 +66,17 @@ const marks = computed(() => {
   ].filter((mark): mark is string => mark !== null)
 })
 
+/** How long a stretch has run, said as both a length and a time, where its start is known at all. */
+function lasting(from: number | null): string | null {
+  if (from === null) return null
+  return `${inWords(Date.now() / 1000 - from)} · od ${clock(from)}`
+}
+
 /** How long the session has been on whatever it is on, where the start of it is known at all. */
-const going = computed(() => {
-  const since = props.session.since
-  if (since === null) return null
-  return `${inWords(Date.now() / 1000 - since)} · od ${clock(since)}`
-})
+const going = computed(() => lasting(props.session.since))
+
+/** How long it has stood in the state it is in, which is what holds a lane still and nothing says. */
+const standingSince = computed(() => lasting(props.session.entered))
 
 /** Open, a draft, merged or closed: the pull request's own state, said rather than only coloured. */
 function standing(change: Change): string {
@@ -180,6 +185,11 @@ onUnmounted(() => {
             <template v-if="going">
               <dt>trvá</dt>
               <dd>{{ going }}</dd>
+            </template>
+
+            <template v-if="standingSince">
+              <dt>ve stavu</dt>
+              <dd>{{ standingSince }}</dd>
             </template>
 
             <template v-if="session.extra">
