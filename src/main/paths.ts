@@ -20,3 +20,5 @@ export const LIVE = join(home, '.config/claude-sessions/live.json')
 /** Written by the terminal statusline, refreshed by the script below it. */
 export const USAGE = join(home, '.cache/terminal-welcome/claude-usage.json')
 export const USAGE_REFRESH = join(home, '.config/bash/ai-usage.py')
+/** Which account the CLI is logged into, which is whose the usage numbers are. */
+export const CLI_CONFIG = join(home, '.claude.json')
