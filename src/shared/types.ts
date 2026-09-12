@@ -76,6 +76,8 @@ export interface Session {
   change: Change | null
   state: StateWord
   activity: ActivityWord | null
+  /** What the session is waiting on, where it is known: the issue a monitor is watching. */
+  about: string | null
   pinned: boolean
 }
 

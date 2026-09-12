@@ -7,7 +7,7 @@ import { githubPr, gitlabMr, remote } from './forge'
 import { branches, records, type SessionRecord } from './records'
 import { record, today } from './history'
 import { order } from './order'
-import { lastTurn, modified, pendingWork, transcripts, type Doing } from './transcripts'
+import { lastTurn, modified, pendingWork, transcripts, watchedFor, type Doing } from './transcripts'
 import { usage } from './usage'
 
 const ACTIVE_SECONDS = 180
@@ -20,7 +20,8 @@ const DOING: { [key in Doing]: ActivityWord } = {
   working: 'úloha běží',
   waiting: 'úloha čeká',
   watching: 'čeká na jiné',
-  queued: 'gate ve frontě'
+  queued: 'gate ve frontě',
+  gating: 'gate běží'
 }
 
 const ISSUE_IN_BRANCH = /(?:^|\/)(?:task-)?(\d{1,6})(?:-|$)/
@@ -145,7 +146,11 @@ async function activity(
   // a watcher up is still working while the answer is being written. The whole window counts, or a
   // tool that takes longer than a few minutes would flip the row to the watcher and back again.
   if (turn === 'running') return age < WAITING_SECONDS ? 'pracuje' : null
-  const doing = await pendingWork(cli, path, config?.queueing ?? undefined)
+  const doing = await pendingWork(
+    cli,
+    path,
+    config ? { queueing: config.queueing, running: config.runningLine } : undefined
+  )
   if (doing) return DOING[doing]
   if (age > WAITING_SECONDS) return null
   return 'čeká na tebe'
@@ -158,6 +163,8 @@ async function describe(
   config: GateConfig | null,
   trackers: { [key: string]: string }
 ): Promise<Session> {
+  const path = index.get(record.cliSessionId ?? '')
+  const doing = await activity(record, now, index, config)
   const root = record.originCwd ?? record.cwd ?? ''
   const { host, project } = await remote(root)
   let change: Change | null = null
@@ -190,7 +197,8 @@ async function describe(
     issue,
     change,
     state,
-    activity: await activity(record, now, index, config),
+    activity: doing,
+    about: doing === 'čeká na jiné' && path ? await watchedFor(path) : null,
     pinned: Boolean(record.isStarred)
   }
 }
