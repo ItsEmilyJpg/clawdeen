@@ -20,11 +20,11 @@ function transcript(lines: unknown[]): string {
 }
 
 /** A session the task directory knows about, which is what lets pendingWork read the transcript at all. */
-function withTasks(cli: string, task = 'one', quietFor = 0): void {
+function withTasks(cli: string, task = 'one', quietFor = 0, wrote = ''): void {
   const directory = join('/tmp', `claude-${userInfo().uid}`, `board-test-${cli}`, cli, 'tasks')
   mkdirSync(directory, { recursive: true })
   const output = join(directory, `${task}.output`)
-  writeFileSync(output, '')
+  writeFileSync(output, wrote)
   if (quietFor > 0) {
     const when = new Date(Date.now() - quietFor * 1000)
     utimesSync(output, when, when)
@@ -77,6 +77,30 @@ describe('pendingWork', () => {
   it('is nothing without a task directory of its own', async () => {
     const path = transcript([said('user', backgrounded('unknown-session', 'babc12345'))])
     expect(await pendingWork('unknown-session', path)).toBeNull()
+  })
+
+  it('lets go of a task whose own output ends with the harness killing it', async () => {
+    withTasks('over-killed', 'bkil12345', 0, 'make check\n\n[killed]\n')
+    const path = transcript([said('user', backgrounded('over-killed', 'bkil12345'))])
+    expect(await pendingWork('over-killed', path)).toBeNull()
+  })
+
+  it('lets go of one that ended with a code, notification or not', async () => {
+    withTasks('over-exited', 'bexi12345', 0, 'Time: 45m 29s.\n\n[exited with code 0]\n')
+    const path = transcript([said('user', backgrounded('over-exited', 'bexi12345'))])
+    expect(await pendingWork('over-exited', path)).toBeNull()
+  })
+
+  it('holds a task that only carries the word somewhere in the middle', async () => {
+    withTasks('still-going', 'bkil54321', 0, '[killed]\nand then it kept going\n')
+    const path = transcript([said('user', backgrounded('still-going', 'bkil54321'))])
+    expect((await pendingWork('still-going', path))?.doing).toBe('working')
+  })
+
+  it('holds one whose last line is a bracket of the command’s own making', async () => {
+    withTasks('still-talking', 'bbra12345', 0, "config for ['doctrine.middleware']\n")
+    const path = transcript([said('user', backgrounded('still-talking', 'bbra12345'))])
+    expect((await pendingWork('still-talking', path))?.doing).toBe('working')
   })
 
   it('holds a task that started and never reported back', async () => {
