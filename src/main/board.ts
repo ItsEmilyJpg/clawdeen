@@ -249,6 +249,7 @@ async function describe(
     changes,
     state,
     activity: doing.word,
+    heard: liveState(record.cliSessionId ?? '', now),
     about: doing.word === 'čeká na tebe' && path ? await watchedFor(path) : null,
     since: doing.since,
     pinned: Boolean(record.isStarred)
