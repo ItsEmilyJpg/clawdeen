@@ -148,11 +148,16 @@ function githubIssue(
 }
 
 /** What a session is doing, and since when where something of its own is running. */
-interface Doing2 {
+export interface Doing2 {
   word: ActivityWord | null
   since: number | null
   /** What is running beside it, where the session is doing something of its own as well. */
   extra: ActivityWord | null
+  /**
+   * True where `čeká na tebe` is only the fallback: the turn is over and nothing of its own is
+   * running, which is a guess at her being next, not the session asking for anything.
+   */
+  idle?: boolean
 }
 
 async function activity(
@@ -212,7 +217,18 @@ async function activity(
     return { word, since: null, extra: null }
   }
   if (age > WAITING_SECONDS || turn === 'running' || turn === 'blocked') return nothing
-  return { word: 'čeká na tebe', since: null, extra: null }
+  return { word: 'čeká na tebe', since: null, extra: null, idle: true }
+}
+
+/**
+ * What the silence after a finished turn is about. A session that stopped with a run going on its
+ * own change is waiting on that run, not on her, and the fallback above cannot see it: the checks
+ * are read off the change, which is only known once the working copy is. A session that asked
+ * something keeps ringing, because that question is hers whatever the run does.
+ */
+export function waitingOn(doing: Doing2, change: Change | null): ActivityWord | null {
+  if (!doing.idle || change?.checks !== 'CI běží') return doing.word
+  return 'čeká na CI'
 }
 
 /**
@@ -276,6 +292,7 @@ async function describe(
   const last = (record.lastActivityAt ?? 0) / 1000
   const title = (record.title ?? '(bez názvu)').split(/\s+/).join(' ')
   const state = displayState(change)
+  const word = waitingOn(doing, change)
   return {
     id: record.sessionId,
     cli: record.cliSessionId ?? '',
@@ -293,11 +310,15 @@ async function describe(
     change,
     changes,
     state,
-    activity: doing.word,
+    activity: word,
     extra: doing.extra,
     heard: liveState(record.cliSessionId ?? '', now),
+    // A wait the board worked out from the change has no monitor behind it, so nothing names it:
+    // the run it is about is already on the row as the state.
     about:
-      doing.word?.startsWith('čeká na') && path ? ((await watchedFor(path))?.about ?? null) : null,
+      word === doing.word && word?.startsWith('čeká na') && path
+        ? ((await watchedFor(path))?.about ?? null)
+        : null,
     since: doing.since,
     pinned: Boolean(record.isStarred)
   }
