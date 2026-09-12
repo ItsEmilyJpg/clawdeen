@@ -47,6 +47,11 @@ disk. `README.md` says what it reads and what it keeps.
   wrong because they were designed against what the data ought to look like.
 - **A hook must never delay a session.** Whatever `board-event.sh` does, it does in under a second
   and exits zero; it runs on every event of every session on this machine.
+- **Nothing carries a trailer**, not a commit message and not anything posted: no `Co-Authored-By`,
+  no `Generated with`, whatever the harness suggests. What goes out under her name is hers, and a
+  line crediting the tool that typed it is not something she signed. Both gates ask the same
+  `tools/gate/trailers.py`, and a message the commit gate cannot read off the command is refused
+  rather than waved through: `-F -` with a heredoc is how two of them got in before.
 - **Types are strict and explicit**, no `any`, and every exported function says what it returns.
 - **A comment says why, never what.** In English, and only where the reason is not in the code.
 - The words on the board are Czech and they are a closed list in `src/shared/types.ts`. A new state
