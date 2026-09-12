@@ -7,13 +7,21 @@ import { githubPr, gitlabMr, remote } from './forge'
 import { branches, records, type SessionRecord } from './records'
 import { record, today } from './history'
 import { order } from './order'
-import { lastTurn, modified, pendingWork, transcripts } from './transcripts'
+import { lastTurn, modified, pendingWork, transcripts, type Doing } from './transcripts'
 import { usage } from './usage'
 
 const ACTIVE_SECONDS = 180
 const WAITING_SECONDS = 1800
 /** How far back a session is still asked whether a task of its own is running. */
 const PENDING_SECONDS = 6 * 3600
+
+/** What a task of the session's own is doing, in the words a row says. */
+const DOING: { [key in Doing]: ActivityWord } = {
+  working: 'úloha běží',
+  waiting: 'úloha čeká',
+  watching: 'čeká na jiné',
+  queued: 'gate ve frontě'
+}
 
 const ISSUE_IN_BRANCH = /(?:^|\/)(?:task-)?(\d{1,6})(?:-|$)/
 const ISSUE_IN_TITLE = /(?<!PR )(?<!MR )#(\d{1,6})\b/
@@ -24,6 +32,7 @@ const STATE_WORDS: StateWord[] = [
   'gate ve frontě',
   'úloha běží',
   'úloha čeká',
+  'čeká na jiné',
   'čeká na tebe',
   'bez PR',
   'koncept',
@@ -132,10 +141,13 @@ async function activity(
   const turn = await lastTurn(path)
   // An unanswered question is hers to close, whatever else the session has running.
   if (turn === 'asking') return 'čeká na tebe'
-  const doing = await pendingWork(cli, path)
-  if (doing) return doing === 'working' ? 'úloha běží' : 'úloha čeká'
+  // What Claude is doing itself comes before what it left running in the background: a session with
+  // a watcher up is still working while the answer is being written. The whole window counts, or a
+  // tool that takes longer than a few minutes would flip the row to the watcher and back again.
+  if (turn === 'running') return age < WAITING_SECONDS ? 'pracuje' : null
+  const doing = await pendingWork(cli, path, config?.queueing ?? undefined)
+  if (doing) return DOING[doing]
   if (age > WAITING_SECONDS) return null
-  if (turn === 'running') return age < ACTIVE_SECONDS ? 'pracuje' : null
   return 'čeká na tebe'
 }
 

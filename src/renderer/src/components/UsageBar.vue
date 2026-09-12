@@ -2,7 +2,7 @@
 import type { UsageWindow } from '../../../shared/types'
 import { burnVerdict, clock, inWords } from '../words'
 
-defineProps<{ windows: UsageWindow[] }>()
+defineProps<{ windows: UsageWindow[]; compact?: boolean }>()
 
 /** Green, amber or red by whether the window outlives its reset; the bar and the numbers share it. */
 function verdict(window: UsageWindow): string {
@@ -21,7 +21,19 @@ function rest(window: UsageWindow): string {
 </script>
 
 <template>
-  <section class="usage">
+  <!-- Compact is the default: the two windows ride in the bar as one line each. -->
+  <div v-if="compact" class="meters">
+    <span v-for="window in windows" :key="window.key" class="meter" :title="rest(window)">
+      <span>{{ window.short }}</span>
+      <b :class="verdict(window)">{{ Math.round(window.used) }} %</b>
+      <span class="track"
+        ><i :class="verdict(window)" :style="{ width: `${Math.min(100, window.used)}%` }"
+      /></span>
+      <span :class="['burnt', verdict(window)]">{{ burnt(window) }}</span>
+    </span>
+  </div>
+
+  <section v-else class="usage">
     <div v-for="window in windows" :key="window.key" class="gauge">
       <div class="head">
         <span>{{ window.label }}</span>
@@ -38,6 +50,77 @@ function rest(window: UsageWindow): string {
 </template>
 
 <style scoped>
+.meters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  white-space: nowrap;
+}
+
+/* In a rail there is no room for the little bars, and less for the sentence beside them. */
+@media (max-width: 860px) {
+  .meter .track {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .meter .burnt {
+    display: none;
+  }
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.meter b {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.meter .track {
+  width: 84px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--muted-soft);
+}
+
+.meter .track i {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--ok);
+}
+
+.meter .track i.warn {
+  background: var(--warn);
+}
+
+.meter .track i.danger {
+  background: var(--danger);
+}
+
+.meter b.ok,
+.meter span.ok {
+  color: var(--ok);
+}
+
+.meter b.warn,
+.meter span.warn {
+  color: var(--warn);
+}
+
+.meter b.danger,
+.meter span.danger {
+  color: var(--danger);
+}
+
 .usage {
   display: grid;
   gap: 10px;
