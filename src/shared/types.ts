@@ -5,6 +5,9 @@ export type StateWord =
   | 'úloha běží'
   | 'úloha čeká'
   | 'čeká na tebe'
+  | 'čeká na CI'
+  | 'čeká na issue'
+  | 'čeká na jiné'
   | 'bez PR'
   | 'koncept'
   | 'konflikt'
@@ -19,7 +22,15 @@ export type StateWord =
 
 export type ActivityWord = Extract<
   StateWord,
-  'pracuje' | 'gate běží' | 'gate ve frontě' | 'úloha běží' | 'úloha čeká' | 'čeká na tebe'
+  | 'pracuje'
+  | 'gate běží'
+  | 'gate ve frontě'
+  | 'úloha běží'
+  | 'úloha čeká'
+  | 'čeká na tebe'
+  | 'čeká na CI'
+  | 'čeká na issue'
+  | 'čeká na jiné'
 >
 
 export interface Link {
