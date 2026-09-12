@@ -4,10 +4,15 @@ import { glob } from 'node:fs/promises'
 
 import { TASKS, TRANSCRIPTS } from './paths'
 
-/** What announces a background task: a monitor, an agent and a backgrounded command all say it differently. */
-const TASK_STARTED =
-  /running in background with ID: ([a-z0-9]+)|Monitor started \(task ([a-z0-9]+)|"agentId"\s*:\s*"([\w-]+)"/g
-/** What ends one. The same notification carries a monitor event, which is why the status is read too. */
+/**
+ * What announces a task of this session: the harness prints where its output is going, and that path
+ * carries the session's own id. Matching the wording alone counted every id the session ever quoted
+ * from somebody else's transcript, which is how a session came to be waiting for twenty tasks that
+ * were never its own.
+ */
+const started = (cli: string): RegExp => new RegExp(`/${cli}/tasks/([a-z0-9]+)\\.output`, 'g')
+/** A monitor says no path, so it is taken on its word and checked against the task directory. */
+const MONITOR_STARTED = /Monitor started \(task ([a-z0-9]+)/g
 const TASK_ENDED = /<task-id>([\w-]+)<\/task-id>[\s\S]{0,600}?<status>(\w+)<\/status>/g
 const TASK_OVER = new Set(['completed', 'failed', 'killed', 'stopped'])
 /** A tool call that is not work in progress but a question, so the session stands on her answer. */
@@ -63,9 +68,16 @@ export async function lastTurn(path: string): Promise<Turn> {
     }
     if (entry.isSidechain || (entry.type !== 'assistant' && entry.type !== 'user')) continue
     const message = entry.message ?? {}
-    // A user entry is either a tool coming back or something she typed; in both the turn is in
-    // flight, and reading it as finished is what made a working session look like a waiting one.
-    if (entry.type === 'user') return 'running'
+    if (entry.type === 'user') {
+      // A task notification arrives as a user turn nobody typed: it is the harness saying something
+      // finished, not a session in flight, and reading it as work is what had an idle session busy.
+      const text =
+        typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
+      if (text.includes('<task-notification>')) continue
+      // Anything else from the user is a tool coming back or something she typed, and both mean the
+      // turn is in flight.
+      return 'running'
+    }
     if (message.stop_reason !== 'tool_use') return 'ended'
     const names = (message.content ?? []).map((part) => part?.name).filter(Boolean) as string[]
     if (names.some((name) => ASKING_TOOLS.has(name))) return 'asking'
@@ -152,11 +164,12 @@ export async function pendingWork(
       const whole = stop === -1 ? '' : text.slice(0, stop)
       tally.rest = stop === -1 ? text : text.slice(stop + 1)
       tally.offset = size
-      for (const match of whole.matchAll(TASK_STARTED)) {
-        const id = match[1] ?? match[2] ?? match[3]
-        if (!id) continue
+      for (const [, id] of whole.matchAll(started(cli))) tally.started.add(id)
+      for (const [, id] of whole.matchAll(MONITOR_STARTED)) {
+        // A monitor is only this session's when the task directory knows it.
+        if (!outputs.has(id)) continue
         tally.started.add(id)
-        if (match[2]) tally.monitors.add(id)
+        tally.monitors.add(id)
       }
       for (const [, task, status] of whole.matchAll(TASK_ENDED)) {
         if (TASK_OVER.has(status)) tally.ended.add(task)
