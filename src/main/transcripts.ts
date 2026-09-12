@@ -1,4 +1,4 @@
-import { open, readFile, stat } from 'node:fs/promises'
+import { open, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { glob } from 'node:fs/promises'
 
@@ -72,28 +72,60 @@ async function taskFiles(cli: string): Promise<string[]> {
   return found
 }
 
+/** What has been read of one transcript, so a sweep reads the new bytes and not the whole file. */
+interface Tally {
+  offset: number
+  started: Set<string>
+  ended: Set<string>
+  rest: string
+}
+
+const tallies = new Map<string, Tally>()
+
 /**
  * A monitor watching an issue writes nothing for hours, so what counts is a task that started and
  * never got its notification, not a file that stopped growing. The task directory is the cheap half:
- * a session that never backgrounded anything is out before the transcript is read at all.
+ * a session that never backgrounded anything is out before the transcript is read at all, and what
+ * is read is only what has been appended since the last pass.
  */
 export async function pendingWork(cli: string, path: string): Promise<boolean> {
   if ((await taskFiles(cli)).length === 0) return false
-  let text: string
+  let size: number
   try {
-    text = await readFile(path, 'utf8')
+    size = (await stat(path)).size
   } catch {
     return false
   }
-  const started = new Set<string>()
-  for (const match of text.matchAll(TASK_STARTED)) {
-    const id = match[1] ?? match[2] ?? match[3]
-    if (id) started.add(id)
+  let tally = tallies.get(path)
+  // A transcript that shrank is a different file under the same name; what was counted no longer holds.
+  if (!tally || tally.offset > size) {
+    tally = { offset: 0, started: new Set(), ended: new Set(), rest: '' }
+    tallies.set(path, tally)
   }
-  for (const [, task, status] of text.matchAll(TASK_ENDED)) {
-    if (TASK_OVER.has(status)) started.delete(task)
+  if (size > tally.offset) {
+    const handle = await open(path, 'r')
+    try {
+      const buffer = Buffer.alloc(size - tally.offset)
+      await handle.read(buffer, 0, buffer.length, tally.offset)
+      // The tail can stop mid line, so what is left over is carried into the next read.
+      const text = tally.rest + buffer.toString('utf8')
+      const stop = text.lastIndexOf('\n')
+      const whole = stop === -1 ? '' : text.slice(0, stop)
+      tally.rest = stop === -1 ? text : text.slice(stop + 1)
+      tally.offset = size
+      for (const match of whole.matchAll(TASK_STARTED)) {
+        const id = match[1] ?? match[2] ?? match[3]
+        if (id) tally.started.add(id)
+      }
+      for (const [, task, status] of whole.matchAll(TASK_ENDED)) {
+        if (TASK_OVER.has(status)) tally.ended.add(task)
+      }
+    } finally {
+      await handle.close()
+    }
   }
-  return started.size > 0
+  for (const id of tally.ended) tally.started.delete(id)
+  return tally.started.size > 0
 }
 
 export async function modified(path: string): Promise<number> {

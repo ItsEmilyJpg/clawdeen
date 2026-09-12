@@ -6,7 +6,12 @@ import { join } from 'node:path'
 
 import type { Board, Session, StateWord } from '../shared/types'
 import { board } from './board'
-import { ago, inWords } from '../shared/words'
+import { chat } from './chat'
+import { transcripts } from './transcripts'
+import { keepOrder } from './order'
+import { lastBounds, rememberBounds } from './window-state'
+import { ago, inWords, stateLabel } from '../shared/words'
+import trayIcon from '../../resources/trayTemplate.png?asset'
 import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
 
 /** The app focuses this session; "last" is the only other value it accepts. */
@@ -66,6 +71,7 @@ let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let latest: Board | null = null
 let waiting = new Set<string>()
+let announced = false
 let settling: NodeJS.Timeout | null = null
 let leaving = false
 
@@ -73,6 +79,7 @@ function createWindow(): void {
   window = new BrowserWindow({
     width: 1040,
     height: 760,
+    ...lastBounds(),
     show: false,
     title: 'Claude session',
     titleBarStyle: 'hiddenInset',
@@ -80,6 +87,7 @@ function createWindow(): void {
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
   })
 
+  rememberBounds(window)
   window.on('ready-to-show', () => window?.show())
   // Closing puts it away rather than ending it; the tray keeps counting either way.
   window.on('close', (event) => {
@@ -135,8 +143,12 @@ function trayRows(session: Session): MenuItemConstructorOptions[] {
   ]
   rows.push(
     change
-      ? link(`${change.label} · ${session.state}`, change.url, DOT[session.state])
-      : { label: session.state, icon: dot(DOT[session.state]), enabled: false }
+      ? link(
+          `${change.label} · ${stateLabel(session.state, change)}`,
+          change.url,
+          DOT[session.state]
+        )
+      : { label: stateLabel(session.state, null), icon: dot(DOT[session.state]), enabled: false }
   )
   for (const job of change?.failed ?? []) {
     rows.push(
@@ -155,6 +167,11 @@ function trayMenu(current: Board | null): Menu {
   const rows = sessions
     .slice(0, MENU_LIMIT)
     .flatMap((session) => [...trayRows(session), { type: 'separator' as const }])
+  const spent = (current?.today ?? []).map((spell) => ({
+    label: `${spell.word} ${inWords(spell.seconds)}`,
+    icon: dot(DOT[spell.word]),
+    enabled: false
+  }))
   const meters = (current?.usage ?? []).map((window) => ({
     label:
       `${window.short} ${Math.round(window.used)} % · reset za ${inWords(window.left)}` +
@@ -167,6 +184,9 @@ function trayMenu(current: Board | null): Menu {
       ? rows
       : [{ label: 'Žádná session za posledních sedm dní', enabled: false }]),
     ...meters,
+    ...(spent.length > 0
+      ? [{ type: 'separator' as const }, { label: 'Dnes', enabled: false }, ...spent]
+      : []),
     { type: 'separator' },
     { label: 'Otevřít přehled', click: show },
     { label: 'Obnovit', click: () => void refresh() },
@@ -186,7 +206,8 @@ function announce(sessions: Session[]): void {
   for (const session of sessions) {
     if (session.activity !== 'čeká na tebe') continue
     now.add(session.id)
-    if (waiting.has(session.id)) continue
+    // The first board of a run is the state of the world, not a set of changes to ring about.
+    if (waiting.has(session.id) || !announced) continue
     const notification = new Notification({
       title: 'Čeká na tebe',
       body: [session.headline, session.place].filter(Boolean).join(' — ')
@@ -197,6 +218,7 @@ function announce(sessions: Session[]): void {
     notification.show()
   }
   waiting = now
+  announced = true
 }
 
 async function refresh(): Promise<void> {
@@ -237,8 +259,19 @@ void app.whenReady().then(() => {
 
   ipcMain.handle('board', async () => latest ?? (await board()))
   ipcMain.handle('open', (_event, url: string) => shell.openExternal(url))
+  ipcMain.handle('chat', async (_event, cli: string) => {
+    const path = (await transcripts()).get(cli)
+    return path ? chat(path) : []
+  })
+  ipcMain.handle('order', async (_event, ids: string[]) => {
+    await keepOrder(ids)
+    await refresh()
+  })
 
-  tray = new Tray(nativeImage.createEmpty())
+  // A template image is the menu bar's own black and white; the count rides beside it as the title.
+  const bar = nativeImage.createFromPath(trayIcon)
+  bar.setTemplateImage(true)
+  tray = new Tray(bar)
   tray.setToolTip('Claude session')
   tray.on('click', show)
 

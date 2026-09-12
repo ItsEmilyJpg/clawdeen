@@ -2,13 +2,19 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import type { Board, Session, StateWord } from '../../shared/types'
+import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
 import UsageBar from './components/UsageBar.vue'
-import { clock, STATE_CLASS, STATE_ORDER } from './words'
+import { clock, inWords, STATE_CLASS, STATE_ORDER } from './words'
 
-const board = ref<Board>({ sessions: [], usage: [], at: 0 })
-const filter = ref<StateWord | ''>('')
+type Filter = StateWord | 'pinned' | ''
+
+const board = ref<Board>({ sessions: [], usage: [], order: [], today: [], at: 0 })
+const filter = ref<Filter>('')
 const search = ref('')
+const dragged = ref<string | null>(null)
+const reading = ref<string | null>(null)
+const field = ref<HTMLInputElement | null>(null)
 let stop: (() => void) | null = null
 
 function wordsOf(session: Session): StateWord[] {
@@ -26,10 +32,15 @@ const counts = computed(() => {
   }))
 })
 
+const pinned = computed(() => board.value.sessions.filter((session) => session.pinned).length)
+
 const shown = computed(() => {
   const needle = search.value.trim().toLowerCase()
   return board.value.sessions.filter((session) => {
-    if (filter.value && !wordsOf(session).includes(filter.value)) return false
+    if (filter.value === 'pinned' && !session.pinned) return false
+    if (filter.value && filter.value !== 'pinned' && !wordsOf(session).includes(filter.value)) {
+      return false
+    }
     if (!needle) return true
     return [session.headline, session.place, session.issue?.label, session.change?.label]
       .filter((text): text is string => Boolean(text))
@@ -37,28 +48,83 @@ const shown = computed(() => {
   })
 })
 
-function pick(word: StateWord | ''): void {
+function pick(word: Filter): void {
   filter.value = filter.value === word ? '' : word
 }
 
+/** Dropping writes the whole visible order, so what she arranged is what she gets back. */
+function drop(onto: Session): void {
+  const held = dragged.value
+  dragged.value = null
+  if (!held || held === onto.id) return
+  const ids = board.value.sessions.map((session) => session.id)
+  const from = ids.indexOf(held)
+  const to = ids.indexOf(onto.id)
+  if (from === -1 || to === -1) return
+  ids.splice(to, 0, ...ids.splice(from, 1))
+  board.value = { ...board.value, sessions: ids.map((id) => byId(id)!), order: ids }
+  void window.api.order(ids)
+}
+
+function byId(id: string): Session | undefined {
+  return board.value.sessions.find((session) => session.id === id)
+}
+
+function forget(): void {
+  board.value = { ...board.value, order: [] }
+  void window.api.order([])
+}
+
+const read = computed(
+  () => board.value.sessions.find((session) => session.id === reading.value) ?? null
+)
+
+/** The board is driven from the keyboard too: the search field is a shortcut away, escape clears it. */
+function onKey(event: KeyboardEvent): void {
+  if ((event.metaKey || event.ctrlKey) && event.key === 'f') {
+    event.preventDefault()
+    field.value?.focus()
+    field.value?.select()
+    return
+  }
+  if (event.key === 'Escape' && !reading.value && search.value) {
+    search.value = ''
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('keydown', onKey)
   board.value = await window.api.board()
   stop = window.api.onBoard((next) => {
     board.value = next
   })
 })
 
-onUnmounted(() => stop?.())
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKey)
+  stop?.()
+})
 </script>
 
 <template>
   <div class="shell">
-    <header class="drag">
+    <header class="bar drag">
       <h1>Claude session</h1>
       <span class="stamp">{{ board.at ? `naposledy ${clock(board.at)}` : 'načítá se' }}</span>
     </header>
 
     <UsageBar :windows="board.usage" />
+
+    <p v-if="board.today.length > 0" class="today">
+      <span class="what">dnes</span>
+      <span
+        v-for="spell in board.today"
+        :key="spell.word"
+        :class="['chip', STATE_CLASS[spell.word]]"
+      >
+        {{ spell.word }} {{ inWords(spell.seconds) }}
+      </span>
+    </p>
 
     <nav class="filters">
       <button :class="['chip', { on: filter === '' }]" @click="pick('')">
@@ -72,13 +138,33 @@ onUnmounted(() => stop?.())
       >
         {{ row.word }} <b>{{ row.count }}</b>
       </button>
-      <input v-model="search" class="search" type="search" placeholder="hledat" />
+      <button
+        v-if="pinned > 0"
+        :class="['chip', 'pin', { on: filter === 'pinned' }]"
+        @click="pick('pinned')"
+      >
+        připnuté <b>{{ pinned }}</b>
+      </button>
+      <button v-if="board.order.length > 0" class="chip undo" @click="forget()">
+        vlastní pořadí ×
+      </button>
+      <input ref="field" v-model="search" class="search" type="search" placeholder="hledat  ⌘F" />
     </nav>
 
     <ul class="sessions">
-      <SessionCard v-for="session in shown" :key="session.id" :session="session" />
+      <SessionCard
+        v-for="session in shown"
+        :key="session.id"
+        :session="session"
+        :dragging="dragged === session.id"
+        @grab="dragged = session.id"
+        @drop="drop(session)"
+        @peek="reading = session.id"
+      />
       <li v-if="shown.length === 0" class="empty">Nic, co by sedělo.</li>
     </ul>
+
+    <ChatPane :session="read" @close="reading = null" />
   </div>
 </template>
 
@@ -86,15 +172,26 @@ onUnmounted(() => stop?.())
 .shell {
   max-width: 980px;
   margin: 0 auto;
-  padding: 24px 20px 28px;
+  padding: 0 20px 28px;
 }
 
-header {
+/*
+ * The window has no title bar of its own, so this strip is it: tall enough to grab, sticky so it
+ * stays grabbable however far the board is scrolled, and indented past the traffic lights.
+ */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  padding-top: 14px;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  margin: 0 -20px 14px;
+  padding: 0 20px 0 88px;
+  background: var(--ground);
+  border-bottom: 1px solid var(--rule);
 }
 
 h1 {
@@ -106,6 +203,22 @@ h1 {
 .stamp {
   color: var(--ink-muted);
   font-size: 11px;
+}
+
+.today {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.today .what {
+  color: var(--ink-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-right: 2px;
 }
 
 .filters {

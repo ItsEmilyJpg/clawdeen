@@ -19,6 +19,7 @@ export interface SessionRecord {
   prs?: { prNumber?: number; repo?: string; url?: string; state?: string; branch?: string }[]
   lastActivityAt?: number
   isArchived?: boolean
+  isStarred?: boolean
 }
 
 export const WINDOW_SECONDS = 7 * 86400
