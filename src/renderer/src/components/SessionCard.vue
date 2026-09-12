@@ -27,7 +27,10 @@ const named = computed(() => {
 const standing = computed(() => {
   const session = props.session
   const rows: { label: string; kind: string; url?: string }[] = []
-  if (session.activity) rows.push({ label: session.activity, kind: STATE_CLASS[session.activity] })
+  if (session.activity) {
+    const about = session.about ? ` · ${session.about}` : ''
+    rows.push({ label: session.activity + about, kind: STATE_CLASS[session.activity] })
+  }
   if (session.change) {
     rows.push({
       label: stateLabel(session.state, session.change),

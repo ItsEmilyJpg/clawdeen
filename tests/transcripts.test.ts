@@ -118,7 +118,7 @@ describe('pendingWork', () => {
 
 describe('pendingWork tells waiting from working', () => {
   it('calls a monitor watching, because it waits on something outside the session', async () => {
-    withTasks('four')
+    withTasks('four', 'bmon12345')
     const path = transcript([said('user', 'Monitor started (task bmon12345, persistent')])
     expect(await pendingWork('four', path)).toBe('watching')
   })
@@ -133,5 +133,31 @@ describe('pendingWork tells waiting from working', () => {
     withTasks('six', 'bcmd67890', 20 * 60)
     const path = transcript([said('user', 'Command running in background with ID: bcmd67890')])
     expect(await pendingWork('six', path)).toBe('waiting')
+  })
+})
+
+describe('lastTurn reads a turn in flight', () => {
+  it('is running while a tool result is the last thing written', async () => {
+    const path = transcript([
+      said('assistant', [{ type: 'tool_use', name: 'Bash' }], 'tool_use'),
+      said('user', [{ type: 'tool_result' }])
+    ])
+    await expect(lastTurn(path)).resolves.toBe('running')
+  })
+
+  it('is running while an answer to what she typed is still being written', async () => {
+    const path = transcript([
+      said('assistant', [{ type: 'text', text: 'hotovo' }], 'end_turn'),
+      said('user', [{ type: 'text', text: 'a dál?' }])
+    ])
+    await expect(lastTurn(path)).resolves.toBe('running')
+  })
+})
+
+describe('pendingWork lets go of a task that died', () => {
+  it('ignores a task that went silent while the session kept talking', async () => {
+    withTasks('seven', 'bold12345', 3 * 3600)
+    const path = transcript([said('user', 'Command running in background with ID: bold12345')])
+    expect(await pendingWork('seven', path)).toBeNull()
   })
 })

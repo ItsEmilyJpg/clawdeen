@@ -13,16 +13,29 @@ export interface GateConfig {
   running: Set<string>
   /** What a check prints while it waits for its turn, which is how a queued one is known. */
   queueing: RegExp | null
+  /** And what it prints while it runs, for a gate this cannot see in a worktree of its own. */
+  runningLine: RegExp | null
+}
+
+function pattern(source: string | undefined, name: string): RegExp | null {
+  if (!source) return null
+  try {
+    return new RegExp(source)
+  } catch (error) {
+    console.warn(`${GATES}: ${name} is not a pattern, ${(error as Error).message}`)
+    return null
+  }
 }
 
 /** Where a long local check registers itself, kept beside this repository rather than in it. */
 export async function gates(): Promise<GateConfig | null> {
-  let config: { registry?: string; lock?: string; queueing?: string }
+  let config: { registry?: string; lock?: string; queueing?: string; running?: string }
   try {
     config = JSON.parse(await readFile(GATES, 'utf8')) as {
       registry?: string
       lock?: string
       queueing?: string
+      running?: string
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
@@ -43,15 +56,12 @@ export async function gates(): Promise<GateConfig | null> {
       }
     }
   }
-  let queueing: RegExp | null = null
-  if (config.queueing) {
-    try {
-      queueing = new RegExp(config.queueing)
-    } catch (error) {
-      console.warn(`${GATES}: queueing is not a pattern, ${(error as Error).message}`)
-    }
+  return {
+    lock: config.lock ?? '',
+    running,
+    queueing: pattern(config.queueing, 'queueing'),
+    runningLine: pattern(config.running, 'running')
   }
-  return { lock: config.lock ?? '', running, queueing }
 }
 
 /**
