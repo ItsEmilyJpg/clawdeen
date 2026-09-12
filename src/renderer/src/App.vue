@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
-import type { Board, ProjectMark, Session, StateWord } from '../../shared/types'
+import type { Board, ProjectMark, Session, StateWord, ThemeMode } from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
 import UsageBar from './components/UsageBar.vue'
@@ -15,7 +15,8 @@ const search = ref('')
 const dragged = ref<string | null>(null)
 const reading = ref<string | null>(null)
 const field = ref<HTMLInputElement | null>(null)
-const ticking = ref(false)
+/** Seconds on the clock: a choice like the others, and it outlives the window like the others. */
+const ticking = ref(remembered('ticking') === '1')
 /** One rule for the whole board: compact by default, everything spelled out when expanded. */
 const expanded = ref(remembered('expanded') === '1')
 /** Two ways to read the same board: the order she arranged, or the workflow the states make. */
@@ -31,7 +32,25 @@ function projectMark(kept: string | null): ProjectMark {
 }
 
 const project = ref<ProjectMark>(projectMark(remembered('project')))
+const THEMES: { value: ThemeMode; label: string }[] = [
+  { value: 'system', label: 'podle systému' },
+  { value: 'light', label: 'světlý' },
+  { value: 'dark', label: 'tmavý' }
+]
+
+function themeMode(kept: string | null): ThemeMode {
+  return THEMES.some((mode) => mode.value === kept) ? (kept as ThemeMode) : 'system'
+}
+
+const theme = ref<ThemeMode>(themeMode(remembered('theme')))
 const settings = ref(false)
+/** The cog and its menu, so a click can be told from a click outside them. */
+const cog = ref<HTMLElement | null>(null)
+const menu = ref<HTMLElement | null>(null)
+/** How far the menu had to be pushed to stay inside the window, in pixels. */
+const nudge = ref(0)
+/** What the menu keeps between itself and the edge of the window. */
+const EDGE = 8
 let stop: (() => void) | null = null
 
 function remembered(key: string): string | null {
@@ -76,15 +95,64 @@ function wide(): void {
   keep('expanded', expanded.value)
 }
 
-function lanesOrList(): void {
-  workflow.value = !workflow.value
-  keep('workflow', workflow.value)
+function orderBy(state: boolean): void {
+  workflow.value = state
+  keep('workflow', state)
 }
 
+function tick(on: boolean): void {
+  ticking.value = on
+  keep('ticking', on)
+}
+
+// The menu holds more than one choice now, so a choice no longer closes it: she is as likely to be
+// there to change two things as one, and the ways out are the cog, escape and a click outside.
 function markProject(mark: ProjectMark): void {
   project.value = mark
   keepWord('project', mark)
-  settings.value = false
+}
+
+/**
+ * The page switches on `color-scheme`, which `system` leaves to the operating system, so her choice
+ * is an attribute on the root and nothing else. The window frame is told separately, because the
+ * traffic lights are not the page's to draw.
+ */
+function paint(mode: ThemeMode): void {
+  if (mode === 'system') delete document.documentElement.dataset.theme
+  else document.documentElement.dataset.theme = mode
+  void window.api.theme(mode)
+}
+
+function wear(mode: ThemeMode): void {
+  theme.value = mode
+  keepWord('theme', mode)
+  paint(mode)
+}
+
+// Before the first paint rather than on mount: a window that starts light and turns dark a frame
+// later is worse than either.
+paint(theme.value)
+
+/**
+ * The menu hangs off the cog, and the cog is not always on the right: a narrow window wraps the
+ * header and drops it to the second row, where a menu aligned to its right edge starts outside the
+ * window. Measured at 420 pixels it began 48 to the left of it. So it is measured once it is drawn
+ * and pushed back in.
+ */
+async function openSettings(): Promise<void> {
+  settings.value = !settings.value
+  if (!settings.value) return
+  nudge.value = 0
+  await nextTick()
+  const box = menu.value?.getBoundingClientRect()
+  if (box && box.left < EDGE) nudge.value = Math.round(EDGE - box.left)
+}
+
+/** A click anywhere but inside the menu closes it, which is what a menu that stays open needs. */
+function outside(event: MouseEvent): void {
+  if (!settings.value) return
+  const target = event.target as Node | null
+  if (target && !cog.value?.contains(target)) settings.value = false
 }
 
 function wordsOf(session: Session): StateWord[] {
@@ -157,13 +225,18 @@ function onKey(event: KeyboardEvent): void {
     field.value?.select()
     return
   }
-  if (event.key === 'Escape' && !reading.value && search.value) {
-    search.value = ''
+  if (event.key !== 'Escape') return
+  // The menu is the innermost thing open, so escape closes it before it reaches the search.
+  if (settings.value) {
+    settings.value = false
+    return
   }
+  if (!reading.value && search.value) search.value = ''
 }
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
+  window.addEventListener('click', outside)
   board.value = await window.api.board()
   stop = window.api.onBoard((next) => {
     board.value = next
@@ -172,6 +245,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('click', outside)
   stop?.()
 })
 </script>
@@ -181,31 +255,56 @@ onUnmounted(() => {
     <header class="bar drag">
       <h1>Claude session</h1>
       <UsageBar v-if="!expanded" :windows="board.usage" compact />
-      <button class="stamp" title="Vteřiny" @click="ticking = !ticking">
-        {{ board.at ? `naposledy ${clock(board.at, ticking)}` : 'načítá se' }}
-      </button>
-      <button
-        class="wider"
-        :title="workflow ? 'Seřadit, jak jsi to nechala' : 'Seřadit podle stavu'"
-        @click="lanesOrList()"
-      >
-        {{ workflow ? '≡' : '⑃' }}
-      </button>
-      <button class="wider" :title="expanded ? 'Zúžit' : 'Rozšířit'" @click="wide()">
-        {{ expanded ? '⌃' : '⌄' }}
-      </button>
-      <div class="settings">
-        <button class="wider" title="Nastavení" @click="settings = !settings">⚙</button>
-        <div v-if="settings" class="menu">
-          <p class="what">Projekt na kartě</p>
-          <button
-            v-for="mark in PROJECT_MARKS"
-            :key="mark.value"
-            :class="['choice', { on: project === mark.value }]"
-            @click="markProject(mark.value)"
+      <!-- One group, so a window too narrow for the bar wraps the whole of it rather than
+           stranding the cog on a row of its own. -->
+      <div class="tools">
+        <button class="stamp" title="Vteřiny" @click="tick(!ticking)">
+          {{ board.at ? `naposledy ${clock(board.at, ticking)}` : 'načítá se' }}
+        </button>
+        <button class="wider" :title="expanded ? 'Zúžit' : 'Rozšířit'" @click="wide()">
+          {{ expanded ? '⌃' : '⌄' }}
+        </button>
+        <div ref="cog" class="settings">
+          <button class="wider" title="Nastavení" @click="openSettings()">⚙</button>
+          <div
+            v-if="settings"
+            ref="menu"
+            class="menu"
+            :style="{ transform: `translateX(${nudge}px)` }"
           >
-            {{ mark.label }}
-          </button>
+            <p class="what">Řazení</p>
+            <button :class="['choice', { on: !workflow }]" @click="orderBy(false)">
+              jak jsi to nechala
+            </button>
+            <button :class="['choice', { on: workflow }]" @click="orderBy(true)">
+              podle stavu
+            </button>
+            <p class="what">Čas</p>
+            <button :class="['choice', { on: !ticking }]" @click="tick(false)">minuty</button>
+            <button :class="['choice', { on: ticking }]" @click="tick(true)">vteřiny</button>
+            <p class="what">Vzhled</p>
+            <button
+              v-for="mode in THEMES"
+              :key="mode.value"
+              :class="['choice', { on: theme === mode.value }]"
+              @click="wear(mode.value)"
+            >
+              {{ mode.label }}
+            </button>
+            <p class="what">Projekt na kartě</p>
+            <button
+              v-for="mark in PROJECT_MARKS"
+              :key="mark.value"
+              :class="['choice', { on: project === mark.value }]"
+              @click="markProject(mark.value)"
+            >
+              {{ mark.label }}
+            </button>
+            <p class="what">Vlastní pořadí</p>
+            <button class="choice" :disabled="board.order.length === 0" @click="forget()">
+              {{ board.order.length > 0 ? 'zapomenout' : 'žádné není' }}
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -329,6 +428,13 @@ h1 {
   min-width: 0;
 }
 
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
 .stamp {
   border: 0;
   background: transparent;
@@ -336,7 +442,6 @@ h1 {
   font: inherit;
   color: var(--ink-muted);
   font-size: 11px;
-  margin-left: auto;
   white-space: nowrap;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
@@ -452,6 +557,11 @@ h1 {
   text-transform: uppercase;
 }
 
+/* Every section but the first stands off the choices above it, or the menu reads as one long list. */
+.menu .what:not(:first-child) {
+  margin-top: 10px;
+}
+
 .choice {
   border: 0;
   border-radius: 6px;
@@ -466,6 +576,12 @@ h1 {
 
 .choice:hover {
   background: var(--hover);
+}
+
+.choice:disabled {
+  color: var(--faint);
+  background: transparent;
+  cursor: default;
 }
 
 .choice.on {
