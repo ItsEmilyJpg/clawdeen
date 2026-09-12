@@ -6,12 +6,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/check-staged.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-staged.sh\"",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python3 .claude/hooks/check-post.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-post.py\"",
             "timeout": 20
           }
         ]
