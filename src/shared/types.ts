@@ -4,7 +4,6 @@ export type StateWord =
   | 'gate ve frontě'
   | 'úloha běží'
   | 'úloha čeká'
-  | 'čeká na jiné'
   | 'čeká na tebe'
   | 'bez PR'
   | 'koncept'
@@ -20,13 +19,7 @@ export type StateWord =
 
 export type ActivityWord = Extract<
   StateWord,
-  | 'pracuje'
-  | 'gate běží'
-  | 'gate ve frontě'
-  | 'úloha běží'
-  | 'úloha čeká'
-  | 'čeká na jiné'
-  | 'čeká na tebe'
+  'pracuje' | 'gate běží' | 'gate ve frontě' | 'úloha běží' | 'úloha čeká' | 'čeká na tebe'
 >
 
 export interface Link {
@@ -78,6 +71,8 @@ export interface Session {
   activity: ActivityWord | null
   /** What the session is waiting on, where it is known: the issue a monitor is watching. */
   about: string | null
+  /** When the task it is waiting on started, so a row can say a long one has been on too long. */
+  since: number | null
   pinned: boolean
 }
 

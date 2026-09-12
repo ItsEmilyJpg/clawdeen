@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
-import { githubPr, gitlabMr, remote } from './forge'
+import { githubPr, gitlabMr, isPullRequest, remote, viewPr } from './forge'
 import { branches, records, type SessionRecord } from './records'
 import { record, today } from './history'
+import { liveAt, liveState } from './live'
 import { order } from './order'
 import { lastTurn, modified, pendingWork, transcripts, watchedFor, type Doing } from './transcripts'
 import { usage } from './usage'
@@ -19,7 +20,7 @@ const PENDING_SECONDS = 6 * 3600
 const DOING: { [key in Doing]: ActivityWord } = {
   working: 'úloha běží',
   waiting: 'úloha čeká',
-  watching: 'čeká na jiné',
+  watching: 'čeká na tebe',
   queued: 'gate ve frontě',
   gating: 'gate běží'
 }
@@ -33,7 +34,6 @@ const STATE_WORDS: StateWord[] = [
   'gate ve frontě',
   'úloha běží',
   'úloha čeká',
-  'čeká na jiné',
   'čeká na tebe',
   'bez PR',
   'koncept',
@@ -101,11 +101,22 @@ function jiraIssue(
   return null
 }
 
+/** A number a title carries is as often a pull request as an issue, and only GitHub knows which. */
+function numbered(change: Change | null, record: SessionRecord): number | null {
+  if (change) return null
+  for (const text of [...branches(record), record.title]) {
+    const match = ISSUE_IN_BRANCH.exec(text ?? '') ?? ISSUE_IN_TITLE.exec(text ?? '')
+    if (match) return Number(match[1])
+  }
+  return null
+}
+
 function githubIssue(
   host: string,
   repo: string,
   change: Change | null,
-  record: SessionRecord
+  record: SessionRecord,
+  taken: number | null
 ): Link | null {
   const link = (number: number | string): Link => ({
     label: `Issue #${number}`,
@@ -113,12 +124,20 @@ function githubIssue(
     url: `https://${host}/${repo}/issues/${number}`
   })
   if (change && change.issues.length > 0) return link(change.issues[0])
+  // A number that turned out to be the pull request is not also the issue.
+  const spare = (found: RegExpExecArray | null): Link | null =>
+    found && Number(found[1]) !== taken ? link(found[1]) : null
   for (const text of [change?.branch, ...branches(record)]) {
-    const match = ISSUE_IN_BRANCH.exec(text ?? '')
-    if (match) return link(match[1])
+    const found = spare(ISSUE_IN_BRANCH.exec(text ?? ''))
+    if (found) return found
   }
-  const match = ISSUE_IN_TITLE.exec(record.title ?? '')
-  return match ? link(match[1]) : null
+  return spare(ISSUE_IN_TITLE.exec(record.title ?? ''))
+}
+
+/** What a session is doing, and since when where something of its own is running. */
+interface Doing2 {
+  word: ActivityWord | null
+  since: number | null
 }
 
 async function activity(
@@ -126,34 +145,49 @@ async function activity(
   now: number,
   index: Map<string, string>,
   config: GateConfig | null
-): Promise<ActivityWord | null> {
+): Promise<Doing2> {
   const standing = await gateState(record, config)
-  if (standing) return standing
+  if (standing) return { word: standing, since: null }
   const cli = record.cliSessionId ?? ''
   const path = index.get(cli)
-  if (!path) return null
+  if (!path) return { word: null, since: null }
   let age: number
   try {
     age = now - (await modified(path))
   } catch {
-    return null
+    return { word: null, since: null }
   }
-  if (age > PENDING_SECONDS) return null
+  if (age > PENDING_SECONDS) return { word: null, since: null }
+  // What a hook said beats what the files say, as long as it is the newer of the two: the hooks are
+  // the fast path and the files are what answers when nothing is listening.
+  const live = liveState(cli, now)
+  const heard = liveAt(cli) ?? 0
+  if (live && heard >= now - age) {
+    if (live === 'asking') return { word: 'čeká na tebe', since: null }
+    if (live === 'working') return { word: 'pracuje', since: null }
+  }
   const turn = await lastTurn(path)
   // An unanswered question is hers to close, whatever else the session has running.
-  if (turn === 'asking') return 'čeká na tebe'
+  if (turn === 'asking') return { word: 'čeká na tebe', since: null }
   // What Claude is doing itself comes before what it left running in the background: a session with
   // a watcher up is still working while the answer is being written. The whole window counts, or a
   // tool that takes longer than a few minutes would flip the row to the watcher and back again.
-  if (turn === 'running') return age < WAITING_SECONDS ? 'pracuje' : null
+  if (turn === 'running' && age < WAITING_SECONDS) return { word: 'pracuje', since: null }
+  // A quiet transcript is not a quiet session: what it left running is asked before it is written
+  // off, which is how a watcher that has been up for an hour keeps its row.
   const doing = await pendingWork(
     cli,
     path,
     config ? { queueing: config.queueing, running: config.runningLine } : undefined
   )
-  if (doing) return DOING[doing]
-  if (age > WAITING_SECONDS) return null
-  return 'čeká na tebe'
+  // A monitor only ever runs beside a finished turn, and then she is the one who can act: the
+  // watcher is what the row says beside the state, not instead of it.
+  if (doing) {
+    const word = doing.doing === 'watching' ? 'čeká na tebe' : DOING[doing.doing]
+    return { word, since: doing.since }
+  }
+  if (age > WAITING_SECONDS || turn === 'running') return { word: null, since: null }
+  return { word: 'čeká na tebe', since: null }
 }
 
 async function describe(
@@ -171,7 +205,12 @@ async function describe(
   let issue: Link | null = null
   if (host === 'github.com' && project) {
     change = await githubPr(project, record)
-    issue = githubIssue(host, project, change, record)
+    // A session that never pushed a branch still names its number in the title, and that number is
+    // sometimes the pull request itself: a row saying `bez PR` over a red run is the worst of both.
+    const named = numbered(change, record)
+    const asPr = named !== null && (await isPullRequest(project, named))
+    if (asPr && named !== null) change = await viewPr(project, named)
+    issue = githubIssue(host, project, change, record, asPr ? named : null)
   } else if (host && project) {
     change = await gitlabMr(host, project, record)
   }
@@ -197,8 +236,9 @@ async function describe(
     issue,
     change,
     state,
-    activity: doing,
-    about: doing === 'čeká na jiné' && path ? await watchedFor(path) : null,
+    activity: doing.word,
+    about: doing.word === 'čeká na tebe' && path ? await watchedFor(path) : null,
+    since: doing.since,
     pinned: Boolean(record.isStarred)
   }
 }

@@ -1,4 +1,4 @@
-import type { StateWord } from '../../shared/types'
+import type { ActivityWord, StateWord } from '../../shared/types'
 
 export { ago, burnVerdict, clock, inWords, stateLabel } from '../../shared/words'
 
@@ -9,7 +9,6 @@ export const STATE_CLASS: { [key in StateWord]: string } = {
   'gate ve frontě': 's-queued',
   'úloha běží': 's-task',
   'úloha čeká': 's-queued',
-  'čeká na jiné': 's-queued',
   'čeká na tebe': 's-waiting',
   'bez PR': 's-none',
   koncept: 's-draft',
@@ -26,3 +25,14 @@ export const STATE_CLASS: { [key in StateWord]: string } = {
 
 /** The order the filter bar counts them in: what a session is doing first, where its change stands after. */
 export const STATE_ORDER = Object.keys(STATE_CLASS) as StateWord[]
+
+/** The workflow: what a session goes through, in the order it is worth looking at. */
+export const LANES: { word: ActivityWord | null; title: string }[] = [
+  { word: 'čeká na tebe', title: 'čeká na tebe' },
+  { word: 'pracuje', title: 'pracuje' },
+  { word: 'úloha běží', title: 'úloha běží' },
+  { word: 'úloha čeká', title: 'úloha čeká' },
+  { word: 'gate běží', title: 'gate běží' },
+  { word: 'gate ve frontě', title: 'gate ve frontě' },
+  { word: null, title: 'ostatní' }
+]
