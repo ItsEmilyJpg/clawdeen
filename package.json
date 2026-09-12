@@ -20,7 +20,9 @@
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
     "icons": "electron tools/icons",
-    "test": "vitest run"
+    "test": "vitest run",
+    "hook:install": "node tools/hook/install.mjs",
+    "hook:remove": "node tools/hook/install.mjs --remove"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
