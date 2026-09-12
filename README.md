@@ -38,8 +38,10 @@ A session waiting on an answer is sorted to the top, its dot turns amber, and th
 While a set of checks is running the word carries how many are done and how long it has been going;
 once the run is over it says how long ago it finished.
 
-The gauges say how long each usage window lasts at the pace so far, and the numbers and the bar are
-green while it outlives its reset, amber within a tenth of it, red when it runs out first.
+The gauges say how long each usage window lasts at the pace so far, against the reset it is measured
+by: `spálíš za 1 h 49 min · reset za 4 h 25 min`, both of them in the bar at the top as well as in
+the gauges. The numbers and the bar are green while the window outlives its reset, amber within a
+tenth of it, red when it runs out first.
 
 What Claude pins is pinned here, marked with an accent down the side of the card. Cards can be
 dragged into any order, which is then hers until the `vlastní pořadí ×` chip gives it back. The
