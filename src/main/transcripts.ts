@@ -174,7 +174,13 @@ export async function pendingWork(
   let queued: Pending | null = null
   for (const id of tally.started) {
     const output = outputs.get(id)
-    if (!output) continue
+    // A task that has printed nothing has no file at all yet, which is not a reason to forget it:
+    // the watcher that says "No output yet" for two hours is exactly the one worth a row.
+    if (!output) {
+      live += 1
+      if (!tally.monitors.has(id)) commands += 1
+      continue
+    }
     let wrote: number
     let born: number
     try {
@@ -185,8 +191,8 @@ export async function pendingWork(
       continue
     }
     // A command that has said nothing for an hour while the session kept moving was killed, or its
-    // notification was lost. Either way it is not something the session is waiting for. A monitor
-    // is not judged this way: it writes nothing by design, so its file only says when it started.
+    // notification was lost, unless a process is still holding its output: then it is simply quiet.
+    // A monitor is not judged this way at all, it writes nothing by design.
     if (!tally.monitors.has(id) && moved - wrote > DEAD) continue
     live += 1
     since = since === null ? born : Math.min(since, born)
