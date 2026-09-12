@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { checksOf } from '../src/main/forge'
-import { stateLabel } from '../src/shared/words'
+import { burnOf, burnVerdict, stateLabel } from '../src/shared/words'
 import type { Change } from '../src/shared/types'
 
 function change(over: Partial<Change> = {}): Change {
@@ -15,7 +15,7 @@ function change(over: Partial<Change> = {}): Change {
     branch: 'feature/one',
     checks: null,
     failed: [],
-    progress: { done: 0, total: 0, failed: 0, since: null },
+    progress: { done: 0, total: 0, failed: 0, since: null, until: null },
     conflict: false,
     review: null,
     issues: [],
@@ -36,7 +36,8 @@ describe('checksOf', () => {
       done: 2,
       total: 3,
       failed: 1,
-      since: Date.parse('2026-09-12T08:00:00Z') / 1000
+      since: Date.parse('2026-09-12T08:00:00Z') / 1000,
+      until: null
     })
   })
 
@@ -52,7 +53,7 @@ describe('checksOf', () => {
     expect(checksOf(undefined)).toEqual({
       checks: null,
       failed: [],
-      progress: { done: 0, total: 0, failed: 0, since: null }
+      progress: { done: 0, total: 0, failed: 0, since: null, until: null }
     })
   })
 })
@@ -68,16 +69,63 @@ describe('stateLabel', () => {
   })
 
   it('keeps the count on a red run that is not over', () => {
-    const progress = { done: 1, total: 4, failed: 1, since: null }
+    const progress = { done: 1, total: 4, failed: 1, since: null, until: null }
     expect(stateLabel('CI červené', change({ progress }))).toBe('CI červené 1/4')
   })
 
-  it('says the word alone once every check is in', () => {
-    const progress = { done: 4, total: 4, failed: 1, since: null }
+  it('says how long ago a finished run finished', () => {
+    const until = Date.now() / 1000 - 14 * 60
+    const progress = { done: 4, total: 4, failed: 1, since: null, until }
+    expect(stateLabel('CI červené', change({ progress }))).toBe('CI červené · před 14 min')
+  })
+
+  it('says the word alone when a finished run kept no time', () => {
+    const progress = { done: 4, total: 4, failed: 1, since: null, until: null }
     expect(stateLabel('CI červené', change({ progress }))).toBe('CI červené')
+  })
+
+  it('counts a fresh run in seconds rather than in zero minutes', () => {
+    const progress = { done: 0, total: 3, failed: 0, since: Date.now() / 1000 - 20, until: null }
+    expect(stateLabel('CI běží', change({ progress }))).toBe('CI běží 0/3 · 20 s')
   })
 
   it('says the word alone where there is no run', () => {
     expect(stateLabel('bez PR', null)).toBe('bez PR')
+  })
+})
+
+describe('burnOf', () => {
+  const fiveHours = 300
+
+  it('says how long the window lasts at the pace so far', () => {
+    // A quarter of the window gone and a fifth of it spent: the rest lasts four times as long again.
+    const left = 225 * 60
+    expect(burnOf(20, left, fiveHours)).toBe(4 * 75 * 60)
+  })
+
+  it('has nothing to run out of before anything is spent', () => {
+    expect(burnOf(0, 200 * 60, fiveHours)).toBeNull()
+  })
+
+  it('has nothing to say at the very start of a window', () => {
+    expect(burnOf(5, fiveHours * 60, fiveHours)).toBeNull()
+  })
+})
+
+describe('burnVerdict', () => {
+  it('is green while the window outlives its reset', () => {
+    expect(burnVerdict(3 * 3600, 2 * 3600)).toBe('ok')
+  })
+
+  it('is amber just short of the reset', () => {
+    expect(burnVerdict(2 * 3600 - 60, 2 * 3600)).toBe('warn')
+  })
+
+  it('is red when the window runs out first', () => {
+    expect(burnVerdict(3600, 3 * 3600)).toBe('danger')
+  })
+
+  it('is green where nothing has been spent', () => {
+    expect(burnVerdict(null, 3600)).toBe('ok')
   })
 })

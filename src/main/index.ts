@@ -10,7 +10,7 @@ import { chat } from './chat'
 import { transcripts } from './transcripts'
 import { keepOrder } from './order'
 import { lastBounds, rememberBounds } from './window-state'
-import { ago, inWords, stateLabel } from '../shared/words'
+import { ago, burnVerdict, inWords, stateLabel } from '../shared/words'
 import trayIcon from '../../resources/trayTemplate.png?asset'
 import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
 
@@ -18,15 +18,17 @@ import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
 const APP_SESSION = 'claude://code/continue?session='
 const MENU_LIMIT = 15
 
-type Dot = 'green' | 'amber' | 'red' | 'blue' | 'grey'
+type Dot = 'green' | 'amber' | 'red' | 'blue' | 'purple' | 'grey'
 
 /** AppKit draws these four, so the menu gets its colours without an icon file of our own. */
 const DOT_IMAGE: { [key in Dot]: [string, number] } = {
   green: ['NSStatusAvailable', 0],
   amber: ['NSStatusPartiallyAvailable', 0],
   red: ['NSStatusUnavailable', 0],
-  // A blue one is the green one turned around the wheel; AppKit has no blue status image.
+  // A blue one is the green one turned around the wheel; AppKit has no blue status image, and none
+  // in the purple a merged pull request is drawn in either.
   blue: ['NSStatusAvailable', 0.58],
+  purple: ['NSStatusAvailable', 0.76],
   grey: ['NSStatusNone', 0]
 }
 
@@ -35,6 +37,7 @@ const DOT: { [key in StateWord]: Dot } = {
   'gate běží': 'blue',
   'gate ve frontě': 'amber',
   'úloha běží': 'blue',
+  'úloha čeká': 'grey',
   'čeká na tebe': 'amber',
   'bez PR': 'grey',
   koncept: 'amber',
@@ -45,7 +48,7 @@ const DOT: { [key in StateWord]: Dot } = {
   'k mergi': 'green',
   'k review': 'blue',
   otevřené: 'blue',
-  sloučené: 'blue',
+  merged: 'purple',
   zavřené: 'grey'
 }
 
@@ -174,9 +177,12 @@ function trayMenu(current: Board | null): Menu {
   }))
   const meters = (current?.usage ?? []).map((window) => ({
     label:
-      `${window.short} ${Math.round(window.used)} % · reset za ${inWords(window.left)}` +
-      (window.pace ? ` · tempo ${window.pace.toFixed(1).replace('.', ',')}×` : ''),
-    icon: dot(window.used >= 85 ? 'red' : window.used >= 60 ? 'amber' : 'green'),
+      `${window.short} ${Math.round(window.used)} % · ` +
+      (window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`) +
+      ` · reset za ${inWords(window.left)}`,
+    icon: dot(
+      { ok: 'green', warn: 'amber', danger: 'red' }[burnVerdict(window.burn, window.left)] as Dot
+    ),
     enabled: false
   }))
   return Menu.buildFromTemplate([

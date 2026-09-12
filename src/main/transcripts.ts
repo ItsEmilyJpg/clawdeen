@@ -15,6 +15,8 @@ const ASKING_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const TAIL_BYTES = 64 * 1024
 
 export type Turn = 'ended' | 'asking' | 'running'
+/** A task of the session's own: one that is writing, or one that is only waiting for something. */
+export type Doing = 'working' | 'waiting'
 
 /** Transcript path by CLI session id. The directory is named after the working copy, so only the file matches. */
 export async function transcripts(): Promise<Map<string, string>> {
@@ -66,17 +68,29 @@ export async function lastTurn(path: string): Promise<Turn> {
   return 'ended'
 }
 
-async function taskFiles(cli: string): Promise<string[]> {
-  const found: string[] = []
-  for await (const path of glob(join(TASKS, '*', cli, 'tasks', '*.output'))) found.push(path)
+/** The output of every task this session started, by the id the file is named after. */
+async function taskFiles(cli: string): Promise<Map<string, string>> {
+  const found = new Map<string, string>()
+  for await (const path of glob(join(TASKS, '*', cli, 'tasks', '*.output'))) {
+    found.set(basename(path).replace(/\.output$/, ''), path)
+  }
   return found
 }
+
+/**
+ * A task that has written nothing for this long is waiting for something rather than doing it: a
+ * watcher polling for a free machine looks exactly like a compile that has gone quiet, and five
+ * minutes is longer than anything of ours stays silent while it works.
+ */
+const QUIET = 300
 
 /** What has been read of one transcript, so a sweep reads the new bytes and not the whole file. */
 interface Tally {
   offset: number
   started: Set<string>
   ended: Set<string>
+  /** Which of them are monitors: a monitor exists to wait, so it never counts as work being done. */
+  monitors: Set<string>
   rest: string
 }
 
@@ -88,18 +102,19 @@ const tallies = new Map<string, Tally>()
  * a session that never backgrounded anything is out before the transcript is read at all, and what
  * is read is only what has been appended since the last pass.
  */
-export async function pendingWork(cli: string, path: string): Promise<boolean> {
-  if ((await taskFiles(cli)).length === 0) return false
+export async function pendingWork(cli: string, path: string): Promise<Doing | null> {
+  const outputs = await taskFiles(cli)
+  if (outputs.size === 0) return null
   let size: number
   try {
     size = (await stat(path)).size
   } catch {
-    return false
+    return null
   }
   let tally = tallies.get(path)
   // A transcript that shrank is a different file under the same name; what was counted no longer holds.
   if (!tally || tally.offset > size) {
-    tally = { offset: 0, started: new Set(), ended: new Set(), rest: '' }
+    tally = { offset: 0, started: new Set(), ended: new Set(), monitors: new Set(), rest: '' }
     tallies.set(path, tally)
   }
   if (size > tally.offset) {
@@ -115,7 +130,9 @@ export async function pendingWork(cli: string, path: string): Promise<boolean> {
       tally.offset = size
       for (const match of whole.matchAll(TASK_STARTED)) {
         const id = match[1] ?? match[2] ?? match[3]
-        if (id) tally.started.add(id)
+        if (!id) continue
+        tally.started.add(id)
+        if (match[2]) tally.monitors.add(id)
       }
       for (const [, task, status] of whole.matchAll(TASK_ENDED)) {
         if (TASK_OVER.has(status)) tally.ended.add(task)
@@ -125,7 +142,20 @@ export async function pendingWork(cli: string, path: string): Promise<boolean> {
     }
   }
   for (const id of tally.ended) tally.started.delete(id)
-  return tally.started.size > 0
+  if (tally.started.size === 0) return null
+
+  const now = Date.now() / 1000
+  for (const id of tally.started) {
+    if (tally.monitors.has(id)) continue
+    const output = outputs.get(id)
+    if (!output) continue
+    try {
+      if (now - (await stat(output)).mtimeMs / 1000 < QUIET) return 'working'
+    } catch {
+      continue
+    }
+  }
+  return 'waiting'
 }
 
 export async function modified(path: string): Promise<number> {
