@@ -16,7 +16,7 @@ const TAIL_BYTES = 64 * 1024
 
 export type Turn = 'ended' | 'asking' | 'running'
 /** A task of the session's own: one that is writing, or one that is only waiting for something. */
-export type Doing = 'working' | 'waiting'
+export type Doing = 'working' | 'waiting' | 'watching' | 'queued'
 
 /** Transcript path by CLI session id. The directory is named after the working copy, so only the file matches. */
 export async function transcripts(): Promise<Map<string, string>> {
@@ -102,7 +102,11 @@ const tallies = new Map<string, Tally>()
  * a session that never backgrounded anything is out before the transcript is read at all, and what
  * is read is only what has been appended since the last pass.
  */
-export async function pendingWork(cli: string, path: string): Promise<Doing | null> {
+export async function pendingWork(
+  cli: string,
+  path: string,
+  queueing?: RegExp
+): Promise<Doing | null> {
   const outputs = await taskFiles(cli)
   if (outputs.size === 0) return null
   let size: number
@@ -145,17 +149,39 @@ export async function pendingWork(cli: string, path: string): Promise<Doing | nu
   if (tally.started.size === 0) return null
 
   const now = Date.now() / 1000
+  let commands = 0
+  let fresh = false
   for (const id of tally.started) {
     if (tally.monitors.has(id)) continue
+    commands += 1
     const output = outputs.get(id)
     if (!output) continue
     try {
-      if (now - (await stat(output)).mtimeMs / 1000 < QUIET) return 'working'
+      if (now - (await stat(output)).mtimeMs / 1000 >= QUIET) continue
+      // A check that says it is queueing has written recently and is still doing nothing.
+      if (queueing && queueing.test(await lastOf(output))) return 'queued'
+      fresh = true
     } catch {
       continue
     }
   }
-  return 'waiting'
+  if (fresh) return 'working'
+  // Only monitors left: those wait for something outside this session, an issue or another session.
+  return commands === 0 ? 'watching' : 'waiting'
+}
+
+/** The end of a task's output, which is where it says what it is waiting for. */
+async function lastOf(path: string): Promise<string> {
+  const handle = await open(path, 'r')
+  try {
+    const size = (await handle.stat()).size
+    const length = Math.min(size, 2048)
+    const buffer = Buffer.alloc(length)
+    await handle.read(buffer, 0, length, Math.max(0, size - length))
+    return buffer.toString('utf8')
+  } finally {
+    await handle.close()
+  }
 }
 
 export async function modified(path: string): Promise<number> {

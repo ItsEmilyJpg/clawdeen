@@ -93,6 +93,8 @@ a {
   text-decoration: none;
   background: var(--muted-soft);
   color: var(--ink-muted);
+  /* A label that breaks in half reads as two labels. */
+  white-space: nowrap;
 }
 
 a.chip {

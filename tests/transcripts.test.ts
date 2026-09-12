@@ -117,10 +117,10 @@ describe('pendingWork', () => {
 })
 
 describe('pendingWork tells waiting from working', () => {
-  it('calls a monitor waiting, however long it has been up', async () => {
+  it('calls a monitor watching, because it waits on something outside the session', async () => {
     withTasks('four')
     const path = transcript([said('user', 'Monitor started (task bmon12345, persistent')])
-    expect(await pendingWork('four', path)).toBe('waiting')
+    expect(await pendingWork('four', path)).toBe('watching')
   })
 
   it('calls a command that has just written working', async () => {
