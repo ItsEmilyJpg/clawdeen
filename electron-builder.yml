@@ -1,0 +1,24 @@
+appId: cz.hadik.claude-sessions
+productName: Claude session
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - dir
+  # An unsigned build for this Mac alone; notarising asks for a developer account nobody here has.
+  identity: null
+  notarize: false
+  extendInfo:
+    # The window is a board, not a document: without this it also wants a dock icon of its own.
+    - LSUIElement: false
+npmRebuild: false
