@@ -15,6 +15,8 @@ const ACTIVE_SECONDS = 180
 const WAITING_SECONDS = 1800
 /** How far back a session is still asked whether a task of its own is running. */
 const PENDING_SECONDS = 6 * 3600
+/** How long a hook that said a session was working keeps saying so. */
+const HEARD_FRESH = 120
 
 /** What a task of the session's own is doing, in the words a row says. */
 const DOING: { [key in Doing]: ActivityWord } = {
@@ -166,7 +168,9 @@ async function activity(
   // moves again; the rest only beats the files while it is the newer of the two.
   if (live === 'asking' && heard > now - WAITING_SECONDS)
     return { word: 'čeká na tebe', since: null }
-  if (live === 'working' && heard >= now - age) return { word: 'pracuje', since: null }
+  // A working session calls a tool every few seconds, so a hook this recent means it is still going,
+  // whatever the transcript happens to have been written last.
+  if (live === 'working' && heard > now - HEARD_FRESH) return { word: 'pracuje', since: null }
   const turn = await lastTurn(path)
   // An unanswered question is hers to close, whatever else the session has running.
   if (turn === 'asking') return { word: 'čeká na tebe', since: null }
