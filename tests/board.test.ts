@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { checksOf } from '../src/main/forge'
 import { openSession } from '../src/main/records'
-import { burnOf, burnVerdict, stateLabel } from '../src/shared/words'
+import { burnOf, burnVerdict, repoColour, stateLabel } from '../src/shared/words'
 import type { Change } from '../src/shared/types'
 
 function change(over: Partial<Change> = {}): Change {
@@ -148,5 +148,20 @@ describe('openSession', () => {
 
   it('claims nothing without a session at all', () => {
     expect(openSession([])).toBeNull()
+  })
+})
+
+describe('repoColour', () => {
+  it('gives one repository the same colour every time', () => {
+    expect(repoColour('notes')).toBe(repoColour('notes'))
+  })
+
+  it('tells the repositories on this machine apart', () => {
+    const names = ['notes', 'claude-sessions', 'examplecorp']
+    expect(new Set(names.map(repoColour)).size).toBe(names.length)
+  })
+
+  it('answers with a colour even for a name that says nothing', () => {
+    expect(repoColour('')).toMatch(/^#[0-9a-f]{6}$/)
   })
 })

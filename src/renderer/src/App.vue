@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-import type { Board, Session, StateWord } from '../../shared/types'
+import type { Board, ProjectMark, Session, StateWord } from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
 import UsageBar from './components/UsageBar.vue'
@@ -20,6 +20,18 @@ const ticking = ref(false)
 const expanded = ref(remembered('expanded') === '1')
 /** Two ways to read the same board: the order she arranged, or the workflow the states make. */
 const workflow = ref(remembered('workflow') === '1')
+const PROJECT_MARKS: { value: ProjectMark; label: string }[] = [
+  { value: 'stripe', label: 'barevný proužek' },
+  { value: 'name', label: 'jméno repozitáře' },
+  { value: 'none', label: 'nic' }
+]
+
+function projectMark(kept: string | null): ProjectMark {
+  return PROJECT_MARKS.some((mark) => mark.value === kept) ? (kept as ProjectMark) : 'stripe'
+}
+
+const project = ref<ProjectMark>(projectMark(remembered('project')))
+const settings = ref(false)
 let stop: (() => void) | null = null
 
 function remembered(key: string): string | null {
@@ -31,8 +43,12 @@ function remembered(key: string): string | null {
 }
 
 function keep(key: string, on: boolean): void {
+  keepWord(key, on ? '1' : '0')
+}
+
+function keepWord(key: string, value: string): void {
   try {
-    localStorage.setItem(key, on ? '1' : '0')
+    localStorage.setItem(key, value)
   } catch {
     // A window that cannot remember the choice still honours it for as long as it is open.
   }
@@ -63,6 +79,12 @@ function wide(): void {
 function lanesOrList(): void {
   workflow.value = !workflow.value
   keep('workflow', workflow.value)
+}
+
+function markProject(mark: ProjectMark): void {
+  project.value = mark
+  keepWord('project', mark)
+  settings.value = false
 }
 
 function wordsOf(session: Session): StateWord[] {
@@ -172,6 +194,20 @@ onUnmounted(() => {
       <button class="wider" :title="expanded ? 'Zúžit' : 'Rozšířit'" @click="wide()">
         {{ expanded ? '⌃' : '⌄' }}
       </button>
+      <div class="settings">
+        <button class="wider" title="Nastavení" @click="settings = !settings">⚙</button>
+        <div v-if="settings" class="menu">
+          <p class="what">Projekt na kartě</p>
+          <button
+            v-for="mark in PROJECT_MARKS"
+            :key="mark.value"
+            :class="['choice', { on: project === mark.value }]"
+            @click="markProject(mark.value)"
+          >
+            {{ mark.label }}
+          </button>
+        </div>
+      </div>
     </header>
 
     <UsageBar v-if="expanded" :windows="board.usage" />
@@ -224,6 +260,7 @@ onUnmounted(() => {
             :session="session"
             :dragging="false"
             laned
+            :project="project"
             @peek="reading = session.id"
           />
         </ul>
@@ -237,6 +274,7 @@ onUnmounted(() => {
         :key="session.id"
         :session="session"
         :dragging="dragged === session.id"
+        :project="project"
         @grab="dragged = session.id"
         @drop="drop(session)"
         @peek="reading = session.id"
@@ -382,6 +420,57 @@ h1 {
   background: var(--muted-soft);
   color: var(--ink-muted);
   cursor: pointer;
+}
+
+.settings {
+  position: relative;
+}
+
+/* The menu hangs off the bar rather than sitting in it, because the bar has no width to spare. */
+.menu {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+.menu .what {
+  margin: 0 0 4px;
+  padding: 0 6px;
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.choice {
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 6px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.choice:hover {
+  background: var(--hover);
+}
+
+.choice.on {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .empty {

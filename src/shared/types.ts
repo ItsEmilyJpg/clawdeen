@@ -33,6 +33,9 @@ export type ActivityWord = Extract<
   | 'čeká na jiné'
 >
 
+/** How a card says which project it belongs to: a stripe in the repository's colour, or its name. */
+export type ProjectMark = 'stripe' | 'name' | 'none'
+
 export interface Link {
   label: string
   token: string

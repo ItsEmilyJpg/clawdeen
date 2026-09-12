@@ -61,3 +61,19 @@ export function burnVerdict(burn: number | null, left: number): 'ok' | 'warn' | 
   if (burn >= left * 1.1) return 'ok'
   return burn >= left * 0.9 ? 'warn' : 'danger'
 }
+
+/**
+ * Hues deliberately beside the state palette rather than among it, so a stripe is never read as a
+ * state. Six of them, because past that they stop being told apart at three pixels wide.
+ */
+const REPO_COLOURS = ['#e0669c', '#3fbf9f', '#f0a500', '#7d7bf5', '#9ccc3f', '#5fc7e8']
+
+/** The same repository keeps the same colour on every machine and every restart, which is the point. */
+export function repoColour(repo: string): string {
+  let hash = 2166136261
+  for (let at = 0; at < repo.length; at++) {
+    hash ^= repo.charCodeAt(at)
+    hash = Math.imul(hash, 16777619)
+  }
+  return REPO_COLOURS[Math.abs(hash) % REPO_COLOURS.length] as string
+}
