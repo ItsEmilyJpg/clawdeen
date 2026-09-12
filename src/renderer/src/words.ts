@@ -37,5 +37,8 @@ export const LANES: { word: ActivityWord | null; title: string }[] = [
   { word: 'úloha čeká', title: 'úloha čeká' },
   { word: 'gate běží', title: 'gate běží' },
   { word: 'gate ve frontě', title: 'gate ve frontě' },
+  { word: 'čeká na CI', title: 'čeká na CI' },
+  { word: 'čeká na issue', title: 'čeká na issue' },
+  { word: 'čeká na jiné', title: 'čeká na jiné' },
   { word: null, title: 'ostatní' }
 ]
