@@ -53,6 +53,9 @@ const standing = computed(() => {
     const hot = timed && Date.now() / 1000 - (session.since as number) > TOO_LONG ? ' hot' : ''
     rows.push({ label: session.activity + about + on, kind: STATE_CLASS[session.activity] + hot })
   }
+  if (session.extra) {
+    rows.push({ label: session.extra, kind: STATE_CLASS[session.extra] })
+  }
   // Where the word only repeats what the pull request chip already says in its colour, it goes.
   if (session.change && !CARRIED.has(session.state)) {
     // A state that came out of a run links to that run; the others say enough on their own.

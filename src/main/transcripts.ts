@@ -12,9 +12,11 @@ const TASK_ENDED = /<task-id>([\w-]+)<\/task-id>[\s\S]{0,600}?<status>(\w+)<\/st
 const TASK_OVER = new Set(['completed', 'failed', 'killed', 'stopped'])
 /** A tool call that is not work in progress but a question, so the session stands on her answer. */
 const ASKING_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
+/** Tools that are a wait rather than work: the session is parked on something else finishing. */
+const WAITING_TOOLS = new Set(['TaskOutput', 'Monitor'])
 const TAIL_BYTES = 64 * 1024
 
-export type Turn = 'ended' | 'asking' | 'running'
+export type Turn = 'ended' | 'asking' | 'running' | 'blocked'
 /** A task of the session's own: one that is writing, or one that is only waiting for something. */
 export type Doing = 'working' | 'waiting' | 'watching' | 'queued' | 'gating'
 
@@ -65,8 +67,9 @@ export async function lastTurn(path: string): Promise<Turn> {
     // flight, and reading it as finished is what made a working session look like a waiting one.
     if (entry.type === 'user') return 'running'
     if (message.stop_reason !== 'tool_use') return 'ended'
-    const asked = (message.content ?? []).some((part) => part?.name && ASKING_TOOLS.has(part.name))
-    return asked ? 'asking' : 'running'
+    const names = (message.content ?? []).map((part) => part?.name).filter(Boolean) as string[]
+    if (names.some((name) => ASKING_TOOLS.has(name))) return 'asking'
+    return names.some((name) => WAITING_TOOLS.has(name)) ? 'blocked' : 'running'
   }
   return 'ended'
 }
