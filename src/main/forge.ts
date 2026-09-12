@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import type { Change, Job, StateWord } from '../shared/types'
+import type { Change, Job, Progress, StateWord } from '../shared/types'
 import { branches, type SessionRecord } from './records'
 
 const run = promisify(execFile)
@@ -75,15 +75,24 @@ async function json<T>(
   }
 }
 
+const remotes = new Map<string, { host: string | null; project: string | null }>()
+
+/** A working copy does not change its origin while the application runs, so it is asked once. */
 export async function remote(
   root: string
 ): Promise<{ host: string | null; project: string | null }> {
+  const known = remotes.get(root)
+  if (known) return known
   try {
     const { stdout } = await run('git', ['-C', root, 'remote', 'get-url', 'origin'], {
       timeout: 15_000
     })
     const match = /(?:@|:\/\/)([^/:@]+)[:/](.+?)(?:\.git)?$/.exec(stdout.trim())
-    if (match) return { host: match[1], project: match[2] }
+    if (match) {
+      const found = { host: match[1], project: match[2] }
+      remotes.set(root, found)
+      return found
+    }
   } catch {
     // A directory that is gone, or one that is not a working copy at all: neither is worth a line.
   }
@@ -103,18 +112,24 @@ interface RollupEntry {
   context?: string
   detailsUrl?: string
   targetUrl?: string
+  startedAt?: string
 }
 
 /** A completed run carries its verdict in conclusion, a running one has none and only a status. */
 export function checksOf(rollup: RollupEntry[] | undefined): {
   checks: Change['checks']
   failed: Job[]
+  progress: Progress
 } {
   const verdicts: string[] = []
   const failed: Job[] = []
+  const started: number[] = []
+  let done = 0
   for (const entry of rollup ?? []) {
     const verdict = (entry.conclusion || entry.state || entry.status || '').toUpperCase()
     verdicts.push(verdict)
+    if (entry.startedAt) started.push(Date.parse(entry.startedAt) / 1000)
+    if (!CHECKS_RUNNING.has(verdict)) done += 1
     if (CHECKS_RED.has(verdict)) {
       failed.push({
         label: entry.name || entry.context || 'check',
@@ -122,10 +137,18 @@ export function checksOf(rollup: RollupEntry[] | undefined): {
       })
     }
   }
-  if (failed.length > 0) return { checks: 'CI červené', failed }
-  if (verdicts.some((verdict) => CHECKS_RUNNING.has(verdict)))
-    return { checks: 'CI běží', failed: [] }
-  return { checks: null, failed: [] }
+  const progress: Progress = {
+    done,
+    total: verdicts.length,
+    failed: failed.length,
+    since: started.length > 0 ? Math.min(...started) : null
+  }
+  // A job that failed early is worth saying even while the rest of the run is still going.
+  if (failed.length > 0) return { checks: 'CI červené', failed, progress }
+  if (verdicts.some((verdict) => CHECKS_RUNNING.has(verdict))) {
+    return { checks: 'CI běží', failed: [], progress }
+  }
+  return { checks: null, failed: [], progress }
 }
 
 interface PullRequest {
@@ -178,7 +201,7 @@ export async function githubPr(repo: string, record: SessionRecord): Promise<Cha
   const state = view.state ?? chosen.state
   const url = view.url ?? chosen.url
   if (!url) return null
-  const { checks, failed } = checksOf(view.statusCheckRollup)
+  const { checks, failed, progress } = checksOf(view.statusCheckRollup)
   return {
     label: `PR #${number}`,
     token: `PR #${number}`,
@@ -189,6 +212,7 @@ export async function githubPr(repo: string, record: SessionRecord): Promise<Cha
     branch: view.headRefName ?? chosen.branch ?? null,
     checks,
     failed,
+    progress,
     conflict: view.mergeable === 'CONFLICTING',
     review: view.reviewDecision ?? null,
     issues: (view.closingIssuesReferences ?? []).map((reference) => reference.number)
@@ -234,6 +258,7 @@ export async function gitlabMr(
         branch: mr.source_branch ?? null,
         checks: null,
         failed: [],
+        progress: { done: 0, total: 0, failed: 0, since: null },
         conflict: Boolean(mr.has_conflicts),
         review: null,
         issues: []

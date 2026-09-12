@@ -32,6 +32,15 @@ export interface Job {
   url: string
 }
 
+/** How far a run has got: what a row says while the checks are still going. */
+export interface Progress {
+  done: number
+  total: number
+  failed: number
+  /** When the earliest check started, so a row can say how long it has been running. */
+  since: number | null
+}
+
 export interface Change extends Link {
   state: StateWord | null
   open: boolean
@@ -39,6 +48,7 @@ export interface Change extends Link {
   branch: string | null
   checks: 'CI běží' | 'CI červené' | null
   failed: Job[]
+  progress: Progress
   conflict: boolean
   review: string | null
   issues: number[]
@@ -56,6 +66,7 @@ export interface Session {
   change: Change | null
   state: StateWord
   activity: ActivityWord | null
+  pinned: boolean
 }
 
 export interface UsageWindow {
@@ -69,8 +80,25 @@ export interface UsageWindow {
   stale: number | null
 }
 
+/** One turn of a conversation as the board shows it back. */
+export interface Line {
+  role: 'user' | 'assistant'
+  at: number
+  text: string
+  tools: string[]
+}
+
+/** How long the day spent in one state, across every session. */
+export interface Spell {
+  word: ActivityWord
+  seconds: number
+}
+
 export interface Board {
   sessions: Session[]
   usage: UsageWindow[]
+  /** Session ids in the order she dragged them into; empty until she does. */
+  order: string[]
+  today: Spell[]
   at: number
 }

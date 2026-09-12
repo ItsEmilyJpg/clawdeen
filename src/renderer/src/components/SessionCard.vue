@@ -2,9 +2,10 @@
 import { computed } from 'vue'
 
 import type { Session } from '../../../shared/types'
-import { ago, STATE_CLASS } from '../words'
+import { ago, stateLabel, STATE_CLASS } from '../words'
 
-const props = defineProps<{ session: Session }>()
+const props = defineProps<{ session: Session; dragging: boolean }>()
+const emit = defineEmits<{ grab: []; drop: []; peek: [] }>()
 
 const APP_SESSION = 'claude://code/continue?session='
 const FAILED_SHOWN = 3
@@ -21,10 +22,15 @@ const chips = computed(() => {
   rows.push(
     session.change
       ? { label: session.change.label, kind: 'pr', url: session.change.url }
-      : { label: session.state, kind: STATE_CLASS[session.state] }
+      : { label: stateLabel(session.state, session.change), kind: STATE_CLASS[session.state] }
   )
   if (session.activity) rows.push({ label: session.activity, kind: STATE_CLASS[session.activity] })
-  if (session.change) rows.push({ label: session.state, kind: STATE_CLASS[session.state] })
+  if (session.change) {
+    rows.push({
+      label: stateLabel(session.state, session.change),
+      kind: STATE_CLASS[session.state]
+    })
+  }
   for (const job of (session.change?.failed ?? []).slice(0, FAILED_SHOWN)) {
     rows.push({ label: job.label, kind: 'job', url: job.url || undefined })
   }
@@ -39,7 +45,13 @@ function open(url: string): void {
 </script>
 
 <template>
-  <li :class="['card', dot, { active: session.active }]">
+  <li
+    :class="['card', dot, { active: session.active, pinned: session.pinned, dragging }]"
+    draggable="true"
+    @dragstart="emit('grab')"
+    @dragover.prevent
+    @drop.prevent="emit('drop')"
+  >
     <button class="open" :title="session.title" @click="open(APP_SESSION + session.id)" />
     <div class="title">{{ session.headline }}</div>
     <div class="chips">
@@ -52,6 +64,7 @@ function open(url: string): void {
         {{ chip.label }}
       </a>
     </div>
+    <button class="peek" title="Přečíst chat" @click.stop="emit('peek')">chat</button>
     <div class="meta">{{ session.place }} · {{ ago(session.last) }}</div>
   </li>
 </template>
@@ -64,6 +77,40 @@ function open(url: string): void {
   border-radius: 12px;
   box-shadow: var(--shadow-card);
   padding: 12px 14px 12px 34px;
+}
+
+/* What she pinned in Claude, marked where it does not compete with the state colours. */
+.card.pinned {
+  border-left: 3px solid var(--accent);
+  padding-left: 32px;
+}
+
+.card.dragging {
+  opacity: 0.5;
+}
+
+/* Reading the conversation is the one thing the card does besides opening the session. */
+.peek {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: 0;
+  border-radius: 9999px;
+  padding: 2px 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--muted-soft);
+  color: var(--ink-muted);
+  cursor: pointer;
+  /* Visible enough to be found, quiet enough not to compete with the labels. */
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.card:hover .peek,
+.peek:focus-visible {
+  opacity: 1;
 }
 
 .card:hover {
