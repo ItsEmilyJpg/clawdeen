@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
-import type { Line, Session } from '../../../shared/types'
+import type { Call, Line, Session } from '../../../shared/types'
 import { clock } from '../words'
 
 const props = defineProps<{ session: Session | null }>()
@@ -17,6 +17,13 @@ async function toTheEnd(): Promise<void> {
   if (talk.value) talk.value.scrollTop = talk.value.scrollHeight
 }
 
+/** Reading further up is hers to keep: only a pane already at the end follows what arrives. */
+function wasAtTheEnd(): boolean {
+  const talking = talk.value
+  if (!talking) return true
+  return talking.scrollHeight - talking.scrollTop - talking.clientHeight < 40
+}
+
 function onKey(event: KeyboardEvent): void {
   if (event.key === 'Escape') emit('close')
 }
@@ -24,21 +31,41 @@ function onKey(event: KeyboardEvent): void {
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 
+// Which session is being read, not the object it arrives in: the board hands the pane a new object
+// every sweep, and watching that had the pane empty itself and load again every fifteen seconds.
 watch(
-  () => props.session,
-  async (session) => {
+  () => props.session?.cli ?? null,
+  async (cli) => {
     lines.value = []
-    if (!session) return
+    if (!cli) return
     loading.value = true
-    lines.value = await window.api.chat(session.cli)
+    lines.value = await window.api.chat(cli)
     loading.value = false
     await toTheEnd()
   },
   { immediate: true }
 )
 
+/** A conversation that has moved is read again in place, so nothing blinks and nothing scrolls away. */
+watch(
+  () => props.session?.last ?? null,
+  async (last, before) => {
+    const cli = props.session?.cli
+    if (!cli || last === null || before === null || last === before) return
+    const atTheEnd = wasAtTheEnd()
+    lines.value = await window.api.chat(cli)
+    if (atTheEnd) await toTheEnd()
+  }
+)
+
 function open(url: string): void {
   void window.api.open(url)
+}
+
+/** What the fold says while it is closed. */
+function named(calls: Call[]): string {
+  const count = calls.length
+  return `${count} ${count === 1 ? 'nástroj' : count < 5 ? 'nástroje' : 'nástrojů'}`
 }
 
 /** The little of Markdown a conversation actually uses, escaped first so nothing can be injected. */
@@ -68,7 +95,13 @@ function rendered(text: string): string {
       <div v-for="(line, index) in lines" :key="index" :class="['line', line.role]">
         <!-- eslint-disable-next-line vue/no-v-html -- escaped in rendered() above -->
         <div v-if="line.text" class="text" v-html="rendered(line.text)"></div>
-        <div v-if="line.tools.length > 0" class="tools">{{ line.tools.join(' · ') }}</div>
+        <details v-if="line.tools.length > 0" class="tools">
+          <summary>{{ named(line.tools) }}</summary>
+          <div v-for="(call, at) in line.tools" :key="at" class="call">
+            <span class="name">{{ call.name }}</span>
+            <span v-if="call.about" class="about">{{ call.about }}</span>
+          </div>
+        </details>
         <div class="when">{{ line.at ? clock(line.at) : '' }}</div>
       </div>
     </div>
@@ -165,6 +198,36 @@ header {
   color: var(--ink-muted);
   font-size: 11px;
   font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.tools summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.tools summary::before {
+  content: '▸ ';
+}
+
+.tools[open] summary::before {
+  content: '▾ ';
+}
+
+.call {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+  padding-left: 12px;
+}
+
+.call .name {
+  flex: none;
+  color: var(--ink);
+}
+
+.call .about {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .empty {

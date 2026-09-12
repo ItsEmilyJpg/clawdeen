@@ -1,6 +1,6 @@
 import { open } from 'node:fs/promises'
 
-import type { Line } from '../shared/types'
+import type { Call, Line } from '../shared/types'
 
 /** Enough of the tail for a long conversation without reading a transcript that can be sixty megabytes. */
 const TAIL_BYTES = 512 * 1024
@@ -14,6 +14,7 @@ interface Part {
   type?: string
   text?: string
   name?: string
+  input?: { [key: string]: unknown }
 }
 
 interface Entry {
@@ -38,14 +39,32 @@ function textOf(content: Part[] | string | undefined): string {
     .trim()
 }
 
-function toolsOf(content: Part[] | string | undefined): string[] {
+/**
+ * Which argument says what a call was on. One order for every tool rather than a table of them:
+ * of 918 calls read off a day of transcripts, 681 were a `Bash` with a command and the rest named a
+ * file, a description or a query. A result is never carried, only what was asked.
+ */
+const ABOUT = ['command', 'file_path', 'description', 'query', 'pattern', 'path', 'title', 'skill']
+const ABOUT_LONGEST = 140
+
+function aboutOf(input: { [key: string]: unknown } | undefined): string {
+  for (const key of ABOUT) {
+    const value = input?.[key]
+    if (typeof value !== 'string' || !value.trim()) continue
+    const line = value.trim().split('\n')[0]
+    return line.length > ABOUT_LONGEST ? `${line.slice(0, ABOUT_LONGEST)}…` : line
+  }
+  return ''
+}
+
+function toolsOf(content: Part[] | string | undefined): Call[] {
   if (typeof content === 'string') return []
   return (content ?? [])
     .filter((part) => part.type === 'tool_use' && part.name)
-    .map((part) => part.name as string)
+    .map((part) => ({ name: part.name as string, about: aboutOf(part.input) }))
 }
 
-/** The conversation as it reads: what was said, with the tool calls named but not unfolded. */
+/** The conversation as it reads: what was said, with the tool calls named and what they were on. */
 export async function chat(path: string): Promise<Line[]> {
   const handle = await open(path, 'r')
   let tail: string
