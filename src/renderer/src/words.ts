@@ -1,6 +1,16 @@
-import type { ActivityWord, StateWord } from '../../shared/types'
+import type { ActivityWord, Change, Session, StateWord } from '../../shared/types'
 
 export { ago, burnVerdict, clock, inWords, repoColour, stateLabel } from '../../shared/words'
+
+/** The colour of a pull request is its own state: open, merged, closed or still a draft. */
+export function prClass(change: Change, session: Session): string {
+  if (change.state === 'merged') return 'pr-merged'
+  if (!change.open) return 'pr-closed'
+  if (change.draft) return 'pr-draft'
+  const red =
+    change === session.change && (session.state === 'CI červené' || session.state === 'konflikt')
+  return red ? 'pr-red' : 'pr-open'
+}
 
 /** One class per word, the same names the stylesheet colours. */
 export const STATE_CLASS: { [key in StateWord]: string } = {

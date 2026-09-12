@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { Board, ProjectMark, Session, StateWord } from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
+import SessionDetail from './components/SessionDetail.vue'
 import UsageBar from './components/UsageBar.vue'
 import { clock, inWords, LANES, STATE_CLASS, STATE_ORDER } from './words'
 
@@ -14,6 +15,8 @@ const filter = ref<Filter>('')
 const search = ref('')
 const dragged = ref<string | null>(null)
 const reading = ref<string | null>(null)
+/** Which card is unfolded and where it sat when it was: the sheet opens over its own row. */
+const opened = ref<{ id: string; left: number; top: number } | null>(null)
 const field = ref<HTMLInputElement | null>(null)
 const ticking = ref(false)
 /** One rule for the whole board: compact by default, everything spelled out when expanded. */
@@ -149,6 +152,17 @@ const read = computed(
   () => board.value.sessions.find((session) => session.id === reading.value) ?? null
 )
 
+/** A session that has dropped off the board takes its sheet with it rather than freezing it open. */
+const unfolded = computed(() =>
+  opened.value ? (board.value.sessions.find((one) => one.id === opened.value?.id) ?? null) : null
+)
+
+/** The chat is the other pane, not a second layer over this one, so unfolding gives way to it. */
+function toTheChat(id: string): void {
+  opened.value = null
+  reading.value = id
+}
+
 /** The board is driven from the keyboard too: the search field is a shortcut away, escape clears it. */
 function onKey(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key === 'f') {
@@ -157,7 +171,7 @@ function onKey(event: KeyboardEvent): void {
     field.value?.select()
     return
   }
-  if (event.key === 'Escape' && !reading.value && search.value) {
+  if (event.key === 'Escape' && !reading.value && !opened.value && search.value) {
     search.value = ''
   }
 }
@@ -262,6 +276,7 @@ onUnmounted(() => {
             laned
             :project="project"
             @peek="reading = session.id"
+            @detail="opened = { id: session.id, ...$event }"
           />
         </ul>
       </section>
@@ -278,11 +293,21 @@ onUnmounted(() => {
         @grab="dragged = session.id"
         @drop="drop(session)"
         @peek="reading = session.id"
+        @detail="opened = { id: session.id, ...$event }"
       />
       <li v-if="shown.length === 0" class="empty">Nic, co by sedělo.</li>
     </ul>
 
     <ChatPane :session="read" @close="reading = null" />
+
+    <SessionDetail
+      v-if="unfolded && opened"
+      :session="unfolded"
+      :left="opened.left"
+      :top="opened.top"
+      @close="opened = null"
+      @chat="toTheChat(unfolded.id)"
+    />
   </div>
 </template>
 
