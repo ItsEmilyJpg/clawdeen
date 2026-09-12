@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import type { UsageWindow } from '../../../shared/types'
-import { clock, inWords } from '../words'
+import { burnVerdict, clock, inWords } from '../words'
 
 defineProps<{ windows: UsageWindow[] }>()
 
-function fill(used: number): string {
-  if (used >= 85) return 'danger'
-  return used >= 60 ? 'warn' : ''
+/** Green, amber or red by whether the window outlives its reset; the bar and the numbers share it. */
+function verdict(window: UsageWindow): string {
+  return burnVerdict(window.burn, window.left)
 }
 
-function note(window: UsageWindow): string {
-  const parts = [`reset v ${clock(window.resets)}, za ${inWords(window.left)}`]
+function burnt(window: UsageWindow): string {
+  return window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`
+}
+
+function rest(window: UsageWindow): string {
+  const parts = [`reset za ${inWords(window.left)}, v ${clock(window.resets)}`]
   if (window.pace) parts.push(`tempo ${window.pace.toFixed(1).replace('.', ',')}×`)
-  if (window.stale) parts.push(`údaj starý ${inWords(window.stale)}`)
   return parts.join(' · ')
 }
 </script>
@@ -22,12 +25,14 @@ function note(window: UsageWindow): string {
     <div v-for="window in windows" :key="window.key" class="gauge">
       <div class="head">
         <span>{{ window.label }}</span>
-        <b>{{ Math.round(window.used) }} %</b>
+        <b :class="verdict(window)">{{ Math.round(window.used) }} %</b>
       </div>
       <span class="bar"
-        ><i :class="fill(window.used)" :style="{ width: `${Math.min(100, window.used)}%` }"
+        ><i :class="verdict(window)" :style="{ width: `${Math.min(100, window.used)}%` }"
       /></span>
-      <div class="meta">{{ note(window) }}</div>
+      <div class="meta">
+        <span :class="verdict(window)">{{ burnt(window) }}</span> · {{ rest(window) }}
+      </div>
     </div>
   </section>
 </template>
@@ -79,6 +84,21 @@ function note(window: UsageWindow): string {
 
 .bar i.danger {
   background: var(--danger);
+}
+
+.head b.ok,
+.meta .ok {
+  color: var(--ok);
+}
+
+.head b.warn,
+.meta .warn {
+  color: var(--warn);
+}
+
+.head b.danger,
+.meta .danger {
+  color: var(--danger);
 }
 
 .meta {

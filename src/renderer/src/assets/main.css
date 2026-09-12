@@ -19,6 +19,9 @@
   --info: #1f5f8b;
   --info-soft: #e8f1f8;
   --muted-soft: #e9ecef;
+  /* What GitHub draws a merged pull request in, so it reads as merged at a glance. */
+  --merged: #8250df;
+  --merged-soft: #f3eeff;
   --shadow-card: 0 1px 2px rgb(23 30 38 / 0.04), 0 6px 24px rgb(23 30 38 / 0.06);
 }
 
@@ -42,6 +45,8 @@
     --info: #7cb8dd;
     --info-soft: #12212c;
     --muted-soft: #232e39;
+    --merged: #a371f7;
+    --merged-soft: #221a33;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 24px rgb(0 0 0 / 0.28);
   }
 }
@@ -134,10 +139,14 @@ a.chip:hover {
   color: var(--ok);
 }
 
-.s-review,
-.s-merged {
+.s-review {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.s-merged {
+  background: var(--merged-soft);
+  color: var(--merged);
 }
 
 .pin {
