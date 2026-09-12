@@ -9,14 +9,14 @@ starts waiting for an answer, and opens any of them in the Claude app with one c
 Everything is local. Nothing is sent anywhere, and the only network calls are the ones `gh` and
 `glab` make for pull requests.
 
-| Source                                                                             | For                                                                                            |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `~/Library/Application Support/Claude/claude-code-sessions/<account>/<org>/*.json` | the sessions, their titles, working copies and pull requests                                   |
-| `~/Library/Application Support/Claude/config.json`                                 | which account the sidebar is showing, so the board lists the same one                          |
-| `~/.claude/projects/*/<cli session>.jsonl`                                         | what the session is doing: a tool still running, a question nobody answered, a turn that ended |
-| `/tmp/claude-<uid>/*/<cli session>/tasks/*.output`                                 | whether a backgrounded command, monitor or agent is still going                                |
-| `gh`, `glab`, `git remote`                                                         | the pull request, its checks, conflicts and review                                             |
-| `~/.cache/terminal-welcome/claude-usage.json`                                      | the five hour and seven day windows                                                            |
+| Source                                                                             | For                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `~/Library/Application Support/Claude/claude-code-sessions/<account>/<org>/*.json` | the sessions, their titles, working copies and pull requests                                                                                                                                                                        |
+| `~/Library/Application Support/Claude/config.json`                                 | which account the sidebar is showing, so the board lists the same one                                                                                                                                                               |
+| `~/.claude/projects/*/<cli session>.jsonl`                                         | what the session is doing: a tool still running, a question nobody answered, a turn that ended; and which working copy its own commands name, which is where the repository is read from when the session was opened somewhere else |
+| `/tmp/claude-<uid>/*/<cli session>/tasks/*.output`                                 | whether a backgrounded command, monitor or agent is still going                                                                                                                                                                     |
+| `gh`, `glab`, `git remote`                                                         | the pull request, its checks, conflicts and review                                                                                                                                                                                  |
+| `~/.cache/terminal-welcome/claude-usage.json`                                      | the five hour and seven day windows                                                                                                                                                                                                 |
 
 ## What it keeps
 

@@ -99,6 +99,40 @@ export async function remote(
   return { host: null, project: null }
 }
 
+const copies = new Map<string, string | null>()
+
+/** Whether a directory a session named is a working copy, and which one: a worktree answers itself. */
+export async function workingCopy(path: string): Promise<string | null> {
+  const known = copies.get(path)
+  if (known !== undefined) return known
+  let top: string | null = null
+  try {
+    const { stdout } = await run('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
+      timeout: 15_000
+    })
+    top = stdout.trim() || null
+  } catch {
+    // A directory that is gone, or one that is not a working copy: neither is worth asking twice.
+  }
+  copies.set(path, top)
+  return top
+}
+
+/** What is checked out where the session works, which is what its pull request is named after. */
+export async function branchAt(root: string): Promise<string | null> {
+  const found = await cached<string>(`branch:${root}`, LOOKUP_TTL, async () => {
+    try {
+      const { stdout } = await run('git', ['-C', root, 'branch', '--show-current'], {
+        timeout: 15_000
+      })
+      return stdout.trim()
+    } catch {
+      return undefined
+    }
+  })
+  return found || null
+}
+
 function stateOf(state: string | undefined, draft = false): StateWord | null {
   if (draft) return 'koncept'
   return STATES[(state ?? '').toLowerCase()] ?? null
@@ -206,25 +240,30 @@ export async function viewPr(
   }
 }
 
+/**
+ * The pull requests the record carries for one repository. A session works in more than the copy it
+ * was opened in, and a number from the other one read here would answer about somebody else's work.
+ */
+function recordedIn(record: SessionRecord, repo: string): NonNullable<SessionRecord['prs']> {
+  return (record.prs ?? []).filter((pr) => !pr.repo || pr.repo === repo)
+}
+
 /** Every pull request a session has open beside it, not only the one it is standing on. */
 export async function githubPrs(repo: string, record: SessionRecord): Promise<Change[]> {
-  const numbers = [
-    ...new Set((record.prs ?? []).map((pr) => pr.prNumber).filter(Boolean))
-  ] as number[]
+  const mine = recordedIn(record, repo)
+  const numbers = [...new Set(mine.map((pr) => pr.prNumber).filter(Boolean))] as number[]
   if (numbers.length === 0) {
     const one = await githubPr(repo, record)
     return one ? [one] : []
   }
   const found = await Promise.all(
-    numbers.map((number) =>
-      viewPr(repo, number, (record.prs ?? []).find((pr) => pr.prNumber === number) ?? {})
-    )
+    numbers.map((number) => viewPr(repo, number, mine.find((pr) => pr.prNumber === number) ?? {}))
   )
   return found.filter((change): change is Change => change !== null)
 }
 
 export async function githubPr(repo: string, record: SessionRecord): Promise<Change | null> {
-  const recorded = (record.prs ?? []).filter((pr) => pr.prNumber)
+  const recorded = recordedIn(record, repo).filter((pr) => pr.prNumber)
   const chosen = recorded.find((pr) => pr.state === 'OPEN') ?? recorded.at(-1) ?? {}
   let number = chosen.prNumber
   if (number === undefined) {
