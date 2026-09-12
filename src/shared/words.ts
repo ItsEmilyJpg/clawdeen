@@ -78,6 +78,37 @@ export function doubtsOf(window: UsageWindow): string[] {
 }
 
 /**
+ * One usage window as a line: the number, then what it means.
+ *
+ * A doubted window keeps the reset, which is a moment and stays true however old the reading is,
+ * and loses the burn, which is arithmetic on the reading itself. Why it is doubted is not repeated
+ * here: that belongs to the file both windows came from and is said once beside them.
+ */
+export function usageLine(window: UsageWindow): string {
+  const head = `${window.short} ${Math.round(window.used)} %`
+  const reset = `reset za ${inWords(window.left)}`
+  if (doubtsOf(window).length > 0) return `${head} · ${reset}`
+  const burn = window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`
+  return `${head} · ${burn} · ${reset}`
+}
+
+/**
+ * The usage rows of a menu: one per window, and under them one more saying why they are doubted.
+ *
+ * That last row carries no window, which is the point of it. The doubt belongs to the one file both
+ * windows were read from, so printing it on each of them says the same account address twice.
+ */
+export function usageRows(windows: UsageWindow[]): { label: string; window: UsageWindow | null }[] {
+  const rows: { label: string; window: UsageWindow | null }[] = windows.map((window) => ({
+    label: usageLine(window),
+    window
+  }))
+  const doubt = windows.map(doubtsOf).find((parts) => parts.length > 0)
+  if (doubt) rows.push({ label: doubt.join(' · '), window: null })
+  return rows
+}
+
+/**
  * Hues deliberately beside the state palette rather than among it, so a stripe is never read as a
  * state. Six of them, because past that they stop being told apart at three pixels wide.
  */
