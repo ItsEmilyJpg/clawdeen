@@ -37,6 +37,9 @@ const STATE_WORDS: StateWord[] = [
   'úloha běží',
   'úloha čeká',
   'čeká na tebe',
+  'čeká na CI',
+  'čeká na issue',
+  'čeká na jiné',
   'bez PR',
   'koncept',
   'konflikt',
@@ -192,8 +195,14 @@ async function activity(
   if (asking) return { word: 'čeká na tebe', since: null, extra: beside }
   if (working) return { word: 'pracuje', since, extra: beside }
   if (beside) return { word: beside, since, extra: null }
-  // A monitor only ever runs beside a finished turn, and then she is the one who can act.
-  if (doing?.doing === 'watching') return { word: 'čeká na tebe', since: null, extra: null }
+  // A monitor is a wait on something with a name, and the row says which: a run, an issue, or
+  // whatever else it was pointed at. None of them rings, because none of them is hers to answer.
+  if (doing?.doing === 'watching') {
+    const seen = path ? await watchedFor(path) : null
+    const word: ActivityWord =
+      seen?.kind === 'ci' ? 'čeká na CI' : seen?.kind === 'issue' ? 'čeká na issue' : 'čeká na jiné'
+    return { word, since: null, extra: null }
+  }
   if (age > WAITING_SECONDS || turn === 'running' || turn === 'blocked') return nothing
   return { word: 'čeká na tebe', since: null, extra: null }
 }
@@ -254,7 +263,8 @@ async function describe(
     activity: doing.word,
     extra: doing.extra,
     heard: liveState(record.cliSessionId ?? '', now),
-    about: doing.word === 'čeká na tebe' && path ? await watchedFor(path) : null,
+    about:
+      doing.word?.startsWith('čeká na') && path ? ((await watchedFor(path))?.about ?? null) : null,
     since: doing.since,
     pinned: Boolean(record.isStarred)
   }

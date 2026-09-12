@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-staged.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/check-post.py",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}
