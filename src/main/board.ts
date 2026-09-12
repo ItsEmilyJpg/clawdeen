@@ -162,10 +162,11 @@ async function activity(
   // the fast path and the files are what answers when nothing is listening.
   const live = liveState(cli, now)
   const heard = liveAt(cli) ?? 0
-  if (live && heard >= now - age) {
-    if (live === 'asking') return { word: 'čeká na tebe', since: null }
-    if (live === 'working') return { word: 'pracuje', since: null }
-  }
+  // The app saying it needs her is the one thing no file can say, so it stands until the session
+  // moves again; the rest only beats the files while it is the newer of the two.
+  if (live === 'asking' && heard > now - WAITING_SECONDS)
+    return { word: 'čeká na tebe', since: null }
+  if (live === 'working' && heard >= now - age) return { word: 'pracuje', since: null }
   const turn = await lastTurn(path)
   // An unanswered question is hers to close, whatever else the session has running.
   if (turn === 'asking') return { word: 'čeká na tebe', since: null }
