@@ -12,8 +12,8 @@ import { TASKS, TRANSCRIPTS } from './paths'
  * were never its own.
  */
 const started = (cli: string): RegExp => new RegExp(`/${cli}/tasks/([a-z0-9]+)\\.output`, 'g')
-/** A monitor says no path, so it is taken on its word and checked against the task directory. */
-const MONITOR_STARTED = /Monitor started \(task ([a-z0-9]+)/g
+/** A monitor names no path, only the task it became. */
+const MONITOR_STARTED = /Monitor started \(task ([a-z0-9]+)/
 const TASK_ENDED = /<task-id>([\w-]+)<\/task-id>[\s\S]{0,600}?<status>(\w+)<\/status>/g
 const TASK_OVER = new Set(['completed', 'failed', 'killed', 'stopped'])
 /** A tool call that is not work in progress but a question, so the session stands on her answer. */
@@ -58,13 +58,28 @@ async function tail(path: string): Promise<string> {
   }
 }
 
+interface Part {
+  type?: string
+  name?: string
+  id?: string
+  tool_use_id?: string
+  content?: unknown
+  input?: { command?: unknown }
+}
+
 interface Entry {
   type?: string
   isSidechain?: boolean
   message?: {
     stop_reason?: string
-    content?: { type?: string; name?: string; input?: { command?: unknown } }[]
+    content?: string | Part[]
   }
+}
+
+/** The parts of one entry, where it has them: a transcript writes a plain answer as a string. */
+function parts(entry: Entry): Part[] {
+  const content = entry.message?.content
+  return Array.isArray(content) ? content : []
 }
 
 /**
@@ -93,11 +108,19 @@ export async function lastTurn(path: string): Promise<Turn> {
       return 'running'
     }
     if (message.stop_reason !== 'tool_use') return 'ended'
-    const names = (message.content ?? []).map((part) => part?.name).filter(Boolean) as string[]
+    const names = parts(entry)
+      .map((part) => part?.name)
+      .filter(Boolean) as string[]
     if (names.some((name) => ASKING_TOOLS.has(name))) return 'asking'
     return names.some((name) => WAITING_TOOLS.has(name)) ? 'blocked' : 'running'
   }
   return 'ended'
+}
+
+/** Whether the session ever backgrounded anything, which a monitor that has printed nothing has. */
+async function hasTasks(cli: string): Promise<boolean> {
+  for await (const directory of glob(join(TASKS, '*', cli, 'tasks'))) return Boolean(directory)
+  return false
 }
 
 /** The output of every task this session started, by the id the file is named after. */
@@ -129,6 +152,14 @@ const QUIET = 300
  */
 const DEAD = 3600
 
+/**
+ * A command that is itself a wait: a loop that sleeps until something else is over, or a bare sleep.
+ * Such a task is waiting from its first second, however often the loop wakes up to print.
+ */
+const WAITING_COMMAND = /\b(?:until|while)\b[\s\S]*?\bdo\b[\s\S]*?\bsleep\b|(?:^|[;&|]\s*)sleep\s/
+/** How the harness names the task it just put in the background, in the result of the call itself. */
+const BACKGROUNDED = /background with ID: ([a-z0-9]+)/
+
 /** What has been read of one transcript, so a sweep reads the new bytes and not the whole file. */
 interface Tally {
   offset: number
@@ -136,6 +167,10 @@ interface Tally {
   ended: Set<string>
   /** Which of them are monitors: a monitor exists to wait, so it never counts as work being done. */
   monitors: Set<string>
+  /** And which of them are waits by the look of the command that started them. */
+  waits: Set<string>
+  /** Calls that were a wait of either kind, until the result says which task id they became. */
+  waiters: Map<string, 'wait' | 'monitor'>
   rest: string
 }
 
@@ -153,13 +188,60 @@ export interface Pending {
   since: number | null
 }
 
+/**
+ * The tasks this stretch of transcript started that are waits rather than work: a monitor, which
+ * exists to wait, and a command that is one. What names the task is the result of the call and what
+ * says which of the two it is is the call itself, so the call's own id joins them, and a half-seen
+ * pair is carried between reads because the two land in different sweeps.
+ *
+ * The pairing is also what keeps somebody else's task out: a transcript the session merely read
+ * quotes the same wording, and matching that wording alone once had a session waiting on twenty
+ * tasks that were never its own.
+ */
+function backgrounded(
+  text: string,
+  waiters: Map<string, 'wait' | 'monitor'>
+): { waits: string[]; monitors: string[] } {
+  const waits: string[] = []
+  const monitors: string[] = []
+  for (const line of text.split('\n')) {
+    if (!line.includes('"tool_use"') && !line.includes('"tool_result"')) continue
+    let entry: Entry
+    try {
+      entry = JSON.parse(line) as Entry
+    } catch {
+      continue
+    }
+    // An agent of its own waits on its own account, and its tasks are not this session's.
+    if (entry.isSidechain) continue
+    for (const part of parts(entry)) {
+      if (part.type === 'tool_use') {
+        if (!part.id) continue
+        if (part.name === 'Monitor') waiters.set(part.id, 'monitor')
+        const command = part.input?.command
+        if (part.name === 'Bash' && typeof command === 'string' && WAITING_COMMAND.test(command))
+          waiters.set(part.id, 'wait')
+        continue
+      }
+      if (part.type !== 'tool_result' || !part.tool_use_id) continue
+      const kind = waiters.get(part.tool_use_id)
+      if (!kind) continue
+      waiters.delete(part.tool_use_id)
+      const said = typeof part.content === 'string' ? part.content : JSON.stringify(part.content)
+      const named = (kind === 'monitor' ? MONITOR_STARTED : BACKGROUNDED).exec(said)
+      if (named) (kind === 'monitor' ? monitors : waits).push(named[1])
+    }
+  }
+  return { waits, monitors }
+}
+
 export async function pendingWork(
   cli: string,
   path: string,
   said?: { queueing: RegExp | null; running: RegExp | null }
 ): Promise<Pending | null> {
   const outputs = await taskFiles(cli)
-  if (outputs.size === 0) return null
+  if (outputs.size === 0 && !(await hasTasks(cli))) return null
   let size: number
   let moved: number
   try {
@@ -172,7 +254,15 @@ export async function pendingWork(
   let tally = tallies.get(path)
   // A transcript that shrank is a different file under the same name; what was counted no longer holds.
   if (!tally || tally.offset > size) {
-    tally = { offset: 0, started: new Set(), ended: new Set(), monitors: new Set(), rest: '' }
+    tally = {
+      offset: 0,
+      started: new Set(),
+      ended: new Set(),
+      monitors: new Set(),
+      waits: new Set(),
+      waiters: new Map(),
+      rest: ''
+    }
     tallies.set(path, tally)
   }
   if (size > tally.offset) {
@@ -187,14 +277,16 @@ export async function pendingWork(
       tally.rest = stop === -1 ? text : text.slice(stop + 1)
       tally.offset = size
       for (const [, id] of whole.matchAll(started(cli))) tally.started.add(id)
-      for (const [, id] of whole.matchAll(MONITOR_STARTED)) {
-        // A monitor is only this session's when the task directory knows it.
-        if (!outputs.has(id)) continue
-        tally.started.add(id)
-        tally.monitors.add(id)
-      }
       for (const [, task, status] of whole.matchAll(TASK_ENDED)) {
         if (TASK_OVER.has(status)) tally.ended.add(task)
+      }
+      const { waits, monitors } = backgrounded(whole, tally.waiters)
+      for (const task of waits) tally.waits.add(task)
+      // A monitor writes nothing until it has something to say, so it has no file to be found by
+      // and the pairing above is the whole of what knows it is this session's.
+      for (const task of monitors) {
+        tally.started.add(task)
+        tally.monitors.add(task)
       }
     } finally {
       await handle.close()
@@ -221,10 +313,12 @@ export async function pendingWork(
     }
     let wrote: number
     let born: number
+    let printed: boolean
     try {
       const seen = await stat(output)
       wrote = seen.mtimeMs / 1000
       born = (seen.birthtimeMs || seen.mtimeMs) / 1000
+      printed = seen.size > 0
     } catch {
       continue
     }
@@ -243,6 +337,9 @@ export async function pendingWork(
     since = since === null ? born : Math.min(since, born)
     if (tally.monitors.has(id)) continue
     commands += 1
+    // A file with nothing in it stamps when it was made, not when the task last said something, so
+    // the quiet rule would read the making of it as work for as long as it takes to go quiet.
+    if (!printed || tally.waits.has(id)) continue
     if (now - wrote >= QUIET) continue
     // A check says in its own output which of the two it is, queueing or running.
     if (said?.queueing?.test(tail)) queued = { doing: 'queued', since: born }
@@ -334,7 +431,7 @@ function commands(text: string): string[] {
     }
     // An agent of its own works somewhere else by design, so what it names is not the session's.
     if (entry.type !== 'assistant' || entry.isSidechain) continue
-    for (const part of entry.message?.content ?? []) {
+    for (const part of parts(entry)) {
       if (part?.type !== 'tool_use' || part.name !== 'Bash') continue
       if (typeof part.input?.command === 'string') found.push(part.input.command)
     }
