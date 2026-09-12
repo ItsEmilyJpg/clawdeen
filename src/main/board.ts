@@ -3,12 +3,20 @@ import { readFile } from 'node:fs/promises'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
-import { githubPrs, gitlabMr, isPullRequest, remote, viewPr } from './forge'
+import { branchAt, githubPrs, gitlabMr, isPullRequest, remote, viewPr, workingCopy } from './forge'
 import { branches, records, type SessionRecord } from './records'
 import { record, today } from './history'
 import { liveAt, liveState } from './live'
 import { order } from './order'
-import { lastTurn, modified, pendingWork, transcripts, watchedFor, type Doing } from './transcripts'
+import {
+  lastTurn,
+  modified,
+  pendingWork,
+  touchedPaths,
+  transcripts,
+  watchedFor,
+  type Doing
+} from './transcripts'
 import { usage } from './usage'
 
 const ACTIVE_SECONDS = 180
@@ -207,16 +215,41 @@ async function activity(
   return { word: 'čeká na tebe', since: null, extra: null }
 }
 
+/**
+ * Where the session works, which is not where it was opened as soon as the work happens in another
+ * checkout: the newest directory its own commands name, where that is a working copy at all.
+ */
+async function workedIn(path: string | undefined, opened: string): Promise<string> {
+  if (!path) return opened
+  for (const said of await touchedPaths(path, opened)) {
+    const copy = await workingCopy(said)
+    if (copy) return copy
+  }
+  return opened
+}
+
 async function describe(
-  record: SessionRecord,
+  opened: SessionRecord,
   now: number,
   index: Map<string, string>,
   config: GateConfig | null,
   trackers: { [key: string]: string }
 ): Promise<Session> {
-  const path = index.get(record.cliSessionId ?? '')
-  const doing = await activity(record, now, index, config)
-  const root = record.originCwd ?? record.cwd ?? ''
+  const path = index.get(opened.cliSessionId ?? '')
+  const doing = await activity(opened, now, index, config)
+  const from = opened.originCwd ?? opened.cwd ?? ''
+  const root = await workedIn(path, from)
+  // A session working outside the copy it was opened in carries none of that copy's branches: they
+  // name work in another repository, and asking this one about them answers about somebody else.
+  const record: SessionRecord =
+    root === from
+      ? opened
+      : {
+          ...opened,
+          branch: (await branchAt(root)) ?? undefined,
+          writtenBranches: [],
+          worktreeName: undefined
+        }
   const { host, project } = await remote(root)
   let change: Change | null = null
   let changes: Change[] = []

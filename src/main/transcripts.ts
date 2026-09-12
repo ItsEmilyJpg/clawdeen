@@ -1,5 +1,6 @@
 import { open, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import { glob } from 'node:fs/promises'
 
 import { TASKS, TRANSCRIPTS } from './paths'
@@ -20,6 +21,16 @@ const ASKING_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 /** Tools that are a wait rather than work: the session is parked on something else finishing. */
 const WAITING_TOOLS = new Set(['TaskOutput', 'Monitor'])
 const TAIL_BYTES = 64 * 1024
+/** Where a command says it runs: the two ways this machine's sessions name a directory. */
+const CD = /(?:^|[;&|(]\s*|&&\s*)cd\s+(?:--\s+)?('[^']+'|"[^"]+"|[^\s;&|<>]+)/g
+const GIT_C = /\bgit\s+(?:-c\s+\S+\s+)*-C\s+('[^']+'|"[^"]+"|[^\s;&|<>]+)/g
+/** A path the shell computes says nothing here, and neither does one that only moves about. */
+const COMPUTED = /[$*`?{]/
+const NOWHERE = new Set(['-', '.', '..'])
+/** How many named directories are kept, so the newest that is a working copy has something behind it. */
+const KEPT = 20
+/** How far the first pass looks back. In the last 64 KB half the transcripts name no directory at all. */
+const NAMED_BYTES = 256 * 1024
 
 export type Turn = 'ended' | 'asking' | 'running' | 'blocked'
 /** A task of the session's own: one that is writing, or one that is only waiting for something. */
@@ -50,7 +61,10 @@ async function tail(path: string): Promise<string> {
 interface Entry {
   type?: string
   isSidechain?: boolean
-  message?: { stop_reason?: string; content?: { type?: string; name?: string }[] }
+  message?: {
+    stop_reason?: string
+    content?: { type?: string; name?: string; input?: { command?: unknown } }[]
+  }
 }
 
 /**
@@ -278,4 +292,91 @@ export async function watchedFor(path: string): Promise<Watched | null> {
 
 export async function modified(path: string): Promise<number> {
   return (await stat(path)).mtimeMs / 1000
+}
+
+/** The directories one transcript has named, oldest first, and how far it has been read. */
+interface Named {
+  offset: number
+  rest: string
+  paths: string[]
+}
+
+const named = new Map<string, Named>()
+
+/**
+ * The commands the session ran, which is the only place a directory may be read from. A transcript
+ * carries the files the session read as well, and those quote `cd` and `git -C` themselves: matching
+ * the text alone had this very session working in a directory it had only ever printed.
+ */
+function commands(text: string): string[] {
+  const found: string[] = []
+  for (const line of text.split('\n')) {
+    if (!line.includes('"tool_use"')) continue
+    let entry: Entry
+    try {
+      entry = JSON.parse(line) as Entry
+    } catch {
+      continue
+    }
+    // An agent of its own works somewhere else by design, so what it names is not the session's.
+    if (entry.type !== 'assistant' || entry.isSidechain) continue
+    for (const part of entry.message?.content ?? []) {
+      if (part?.type !== 'tool_use' || part.name !== 'Bash') continue
+      if (typeof part.input?.command === 'string') found.push(part.input.command)
+    }
+  }
+  return found
+}
+
+/** The directories one command names, in the order it names them. */
+function directories(command: string, from: string): string[] {
+  const found: { at: number; path: string }[] = []
+  for (const pattern of [CD, GIT_C]) {
+    for (const match of command.matchAll(pattern)) {
+      const said = match[1].replace(/^['"]|['"]$/g, '')
+      if (COMPUTED.test(said) || NOWHERE.has(said)) continue
+      const path = said.startsWith('~/') ? join(homedir(), said.slice(2)) : said
+      if (!isAbsolute(path) && !from) continue
+      found.push({ at: match.index, path: isAbsolute(path) ? path : resolve(from, path) })
+    }
+  }
+  return found.sort((one, other) => one.at - other.at).map((one) => one.path)
+}
+
+/**
+ * Every directory the session's own commands have named, newest first. A relative one is read against
+ * the copy the session was opened in, which is where the harness starts every command.
+ */
+export async function touchedPaths(path: string, from: string): Promise<string[]> {
+  let size: number
+  try {
+    size = (await stat(path)).size
+  } catch {
+    return []
+  }
+  let seen = named.get(path)
+  // A transcript that shrank is a different file under the same name; what was read no longer holds.
+  if (!seen || seen.offset > size) {
+    seen = { offset: Math.max(0, size - NAMED_BYTES), rest: '', paths: [] }
+    named.set(path, seen)
+  }
+  if (size > seen.offset) {
+    const handle = await open(path, 'r')
+    try {
+      const buffer = Buffer.alloc(size - seen.offset)
+      await handle.read(buffer, 0, buffer.length, seen.offset)
+      const text = seen.rest + buffer.toString('utf8')
+      const stop = text.lastIndexOf('\n')
+      seen.rest = stop === -1 ? text : text.slice(stop + 1)
+      seen.offset = size
+      for (const command of commands(stop === -1 ? '' : text.slice(0, stop))) {
+        for (const directory of directories(command, from)) {
+          seen.paths = [...seen.paths.filter((kept) => kept !== directory), directory].slice(-KEPT)
+        }
+      }
+    } finally {
+      await handle.close()
+    }
+  }
+  return [...seen.paths].reverse()
 }
