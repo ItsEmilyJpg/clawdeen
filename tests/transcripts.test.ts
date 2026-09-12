@@ -32,6 +32,11 @@ function withTasks(cli: string, task = 'one', quietFor = 0): void {
   rubbish.push(join('/tmp', `claude-${userInfo().uid}`, `board-test-${cli}`))
 }
 
+/** The line the harness prints when a command goes to the background, path and all. */
+const backgrounded = (cli: string, task: string): string =>
+  `Command running in background with ID: ${task}. Output is being written to: ` +
+  `/tmp/claude-${userInfo().uid}/board-test-${cli}/${cli}/tasks/${task}.output`
+
 const said = (role: string, content: unknown, stop?: string): unknown => ({
   type: role,
   message: { role, content, stop_reason: stop }
@@ -70,20 +75,20 @@ describe('lastTurn', () => {
 
 describe('pendingWork', () => {
   it('is nothing without a task directory of its own', async () => {
-    const path = transcript([said('user', 'Command running in background with ID: babc12345')])
+    const path = transcript([said('user', backgrounded('unknown-session', 'babc12345'))])
     expect(await pendingWork('unknown-session', path)).toBeNull()
   })
 
   it('holds a task that started and never reported back', async () => {
     withTasks('one', 'babc12345')
-    const path = transcript([said('user', 'Command running in background with ID: babc12345')])
+    const path = transcript([said('user', backgrounded('one', 'babc12345'))])
     expect((await pendingWork('one', path))?.doing).toBe('working')
   })
 
   it('lets go once the notification arrives', async () => {
     withTasks('two', 'babc12345')
     const path = transcript([
-      said('user', 'Command running in background with ID: babc12345'),
+      said('user', backgrounded('two', 'babc12345')),
       said(
         'user',
         '<task-notification>\n<task-id>babc12345</task-id>\n<status>completed</status>\n</task-notification>'
@@ -98,7 +103,7 @@ describe('pendingWork', () => {
    */
   it('sees a notification split across two reads', async () => {
     withTasks('three', 'babc12345')
-    const path = transcript([said('user', 'Command running in background with ID: babc12345')])
+    const path = transcript([said('user', backgrounded('three', 'babc12345'))])
     expect((await pendingWork('three', path))?.doing).toBe('working')
 
     const notification = JSON.stringify(
@@ -125,13 +130,13 @@ describe('pendingWork tells waiting from working', () => {
 
   it('calls a command that has just written working', async () => {
     withTasks('five', 'bcmd12345')
-    const path = transcript([said('user', 'Command running in background with ID: bcmd12345')])
+    const path = transcript([said('user', backgrounded('five', 'bcmd12345'))])
     expect((await pendingWork('five', path))?.doing).toBe('working')
   })
 
   it('calls a command that has gone quiet waiting', async () => {
     withTasks('six', 'bcmd67890', 20 * 60)
-    const path = transcript([said('user', 'Command running in background with ID: bcmd67890')])
+    const path = transcript([said('user', backgrounded('six', 'bcmd67890'))])
     expect((await pendingWork('six', path))?.doing).toBe('waiting')
   })
 })
@@ -157,7 +162,7 @@ describe('lastTurn reads a turn in flight', () => {
 describe('pendingWork lets go of a task that died', () => {
   it('ignores a task that went silent while the session kept talking', async () => {
     withTasks('seven', 'bold12345', 3 * 3600)
-    const path = transcript([said('user', 'Command running in background with ID: bold12345')])
+    const path = transcript([said('user', backgrounded('seven', 'bold12345'))])
     expect(await pendingWork('seven', path)).toBeNull()
   })
 })
