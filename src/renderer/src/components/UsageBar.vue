@@ -13,8 +13,13 @@ function burnt(window: UsageWindow): string {
   return window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`
 }
 
+/** When the window comes back, which is the number the burn is read against. */
+function until(window: UsageWindow): string {
+  return `reset za ${inWords(window.left)}`
+}
+
 function rest(window: UsageWindow): string {
-  const parts = [`reset za ${inWords(window.left)}, v ${clock(window.resets)}`]
+  const parts = [`${until(window)}, v ${clock(window.resets)}`]
   if (window.pace) parts.push(`tempo ${window.pace.toFixed(1).replace('.', ',')}×`)
   return parts.join(' · ')
 }
@@ -29,7 +34,11 @@ function rest(window: UsageWindow): string {
       <span class="track"
         ><i :class="verdict(window)" :style="{ width: `${Math.min(100, window.used)}%` }"
       /></span>
-      <span :class="['burnt', verdict(window)]">{{ burnt(window) }}</span>
+      <!-- Both numbers, because one of them alone decides nothing: what it lasts, against the reset. -->
+      <span class="sentence">
+        <span :class="['burnt', verdict(window)]">{{ burnt(window) }}</span> ·
+        {{ until(window) }}
+      </span>
     </span>
   </div>
 
@@ -66,7 +75,7 @@ function rest(window: UsageWindow): string {
 }
 
 @media (max-width: 700px) {
-  .meter .burnt {
+  .meter .sentence {
     display: none;
   }
 }
