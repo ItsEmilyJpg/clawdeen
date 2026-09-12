@@ -22,6 +22,8 @@
   /* What GitHub draws a merged pull request in, so it reads as merged at a glance. */
   --merged: #8250df;
   --merged-soft: #f3eeff;
+  /* What a sheet laid over the board dims it with: enough to take the eye, not enough to hide it. */
+  --veil: rgb(23 30 38 / 0.3);
   --shadow-card: 0 1px 2px rgb(23 30 38 / 0.04), 0 6px 24px rgb(23 30 38 / 0.06);
 }
 
@@ -47,6 +49,7 @@
     --muted-soft: #232e39;
     --merged: #a371f7;
     --merged-soft: #221a33;
+    --veil: rgb(0 0 0 / 0.52);
     --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 24px rgb(0 0 0 / 0.28);
   }
 }
