@@ -36,6 +36,9 @@ export type ActivityWord = Extract<
 /** How a card says which project it belongs to: a stripe in the repository's colour, or its name. */
 export type ProjectMark = 'stripe' | 'name' | 'none'
 
+/** Which palette the window draws in. `system` is no choice at all: it follows macOS. */
+export type ThemeMode = 'system' | 'light' | 'dark'
+
 export interface Link {
   label: string
   token: string
