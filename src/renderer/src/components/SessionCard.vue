@@ -4,7 +4,7 @@ import { computed } from 'vue'
 import type { Change, Session } from '../../../shared/types'
 import { ago, inWords, stateLabel, STATE_CLASS } from '../words'
 
-const props = defineProps<{ session: Session; dragging: boolean }>()
+const props = defineProps<{ session: Session; dragging: boolean; laned?: boolean }>()
 const emit = defineEmits<{ grab: []; drop: []; peek: [] }>()
 
 const APP_SESSION = 'claude://code/continue?session='
@@ -28,14 +28,14 @@ const named = computed(() => {
   return [
     session.issue
       ? { label: session.issue.label, kind: 'issue', url: session.issue.url }
-      : { label: 'bez issue', kind: STATE_CLASS['bez PR'] },
+      : { label: 'bez issue', kind: `${STATE_CLASS['bez PR']} spare` },
     ...(session.changes.length > 0
       ? session.changes.map((change) => ({
           label: change.label,
           kind: `pr ${howItStands(change, session)}`,
           url: change.url
         }))
-      : [{ label: session.state, kind: STATE_CLASS[session.state] }])
+      : [{ label: session.state, kind: `${STATE_CLASS[session.state]} spare` }])
   ]
 })
 
@@ -43,6 +43,8 @@ const named = computed(() => {
 const standing = computed(() => {
   const session = props.session
   const rows: { label: string; kind: string; url?: string }[] = []
+  // In a lane the heading is that word already, and the dot beside the row says it a third time, so
+  // the chip is kept only where it carries something the lane cannot: how long, or what it waits on.
   if (session.activity) {
     const about = session.about ? ` · ${session.about}` : ''
     // How long says something about a task, and nothing at all about how long she has been the one
@@ -51,7 +53,10 @@ const standing = computed(() => {
     const on = timed ? ` · ${inWords(Date.now() / 1000 - (session.since as number))}` : ''
     // A task that has been on for longer than this is not progress any more, it is a thing to look at.
     const hot = timed && Date.now() / 1000 - (session.since as number) > TOO_LONG ? ' hot' : ''
-    rows.push({ label: session.activity + about + on, kind: STATE_CLASS[session.activity] + hot })
+    const label = session.activity + about + on
+    if (!props.laned || label !== session.activity) {
+      rows.push({ label, kind: STATE_CLASS[session.activity] + hot })
+    }
   }
   if (session.extra) {
     rows.push({ label: session.extra, kind: STATE_CLASS[session.extra] })
@@ -299,8 +304,9 @@ function open(url: string): void {
   background: var(--muted-soft);
   color: var(--ink-muted);
   cursor: pointer;
-  /* Visible enough to be found, quiet enough not to compete with the labels. */
-  opacity: 0.45;
+  /* It belongs to the row under the cursor, and the width it took on every other row belongs to
+     the name. The keyboard still finds it, because focus counts as being there. */
+  opacity: 0;
   transition: opacity 0.15s ease;
 }
 
@@ -316,7 +322,7 @@ function open(url: string): void {
  */
 .sessions.compact .card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px minmax(0, 260px) 170px;
+  grid-template-columns: minmax(0, 1fr) 150px minmax(0, 260px) minmax(0, 170px);
   align-items: center;
   column-gap: 14px;
   padding: 8px 56px 8px 30px;
@@ -374,13 +380,19 @@ function open(url: string): void {
   transform: translateY(-50%);
 }
 
-/* A narrow window drops what it can spare: where the worktree is, and then the issue and the change. */
-@media (max-width: 860px) {
+/*
+ * A narrow window drops what it can spare, and what it can spare is never the name: first where the
+ * worktree is, then the words that only say something is absent, then the issue and the change, and
+ * last the reading of the chat. At 420 pixels the name used to be three letters and an ellipsis
+ * while a state nobody had to read kept 240 of the 380.
+ */
+@media (max-width: 1000px) {
   .sessions.compact .card {
-    grid-template-columns: minmax(0, 1fr) 150px minmax(0, 240px);
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 240px);
   }
 
-  .sessions.compact .meta {
+  .sessions.compact .meta,
+  .sessions.compact .chip.spare {
     display: none;
   }
 }
@@ -391,6 +403,27 @@ function open(url: string): void {
   }
 
   .sessions.compact .left .chips {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .sessions.compact .card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  /* The state is allowed under half the row and not a pixel more; the rest is the name. */
+  .sessions.compact .right .chips {
+    max-width: 42vw;
+  }
+}
+
+@media (max-width: 460px) {
+  .sessions.compact .card {
+    padding-right: 12px;
+  }
+
+  .sessions.compact .peek {
     display: none;
   }
 }
