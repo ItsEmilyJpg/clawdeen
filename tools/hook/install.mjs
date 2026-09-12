@@ -10,7 +10,9 @@ import { dirname, join } from 'node:path'
 const SETTINGS = join(homedir(), '.claude', 'settings.json')
 const INSTALLED = join(homedir(), '.config', 'claude-sessions', 'board-event.sh')
 const SOURCE = join(import.meta.dirname, 'board-event.sh')
-const EVENTS = ['SessionStart', 'UserPromptSubmit', 'Notification', 'Stop']
+// PreToolUse is the chatty one and it is here on purpose: it is the only thing that says a session
+// is working right now, and a turn can go minutes between the events that bracket it.
+const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'Notification', 'Stop']
 
 const removing = process.argv.includes('--remove')
 
