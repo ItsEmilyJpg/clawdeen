@@ -1,6 +1,6 @@
 import type { ActivityWord, StateWord } from '../../shared/types'
 
-export { ago, burnVerdict, clock, inWords, stateLabel } from '../../shared/words'
+export { ago, burnVerdict, clock, inWords, repoColour, stateLabel } from '../../shared/words'
 
 /** One class per word, the same names the stylesheet colours. */
 export const STATE_CLASS: { [key in StateWord]: string } = {
@@ -37,8 +37,10 @@ export const LANES: { word: ActivityWord | null; title: string }[] = [
   { word: 'úloha čeká', title: 'úloha čeká' },
   { word: 'gate běží', title: 'gate běží' },
   { word: 'gate ve frontě', title: 'gate ve frontě' },
-  // Last of the lanes that say something: a run on somebody else's machine is the one wait that is
-  // nobody's to answer, and it belongs under everything that is still hers.
+  // Last of the lanes that say something: a wait on somebody else's machine is nobody's to answer,
+  // and it belongs under everything that is still hers.
   { word: 'čeká na CI', title: 'čeká na CI' },
+  { word: 'čeká na issue', title: 'čeká na issue' },
+  { word: 'čeká na jiné', title: 'čeká na jiné' },
   { word: null, title: 'ostatní' }
 ]

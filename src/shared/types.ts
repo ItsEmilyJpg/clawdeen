@@ -33,6 +33,9 @@ export type ActivityWord = Extract<
   | 'čeká na jiné'
 >
 
+/** How a card says which project it belongs to: a stripe in the repository's colour, or its name. */
+export type ProjectMark = 'stripe' | 'name' | 'none'
+
 export interface Link {
   label: string
   token: string
@@ -91,6 +94,8 @@ export interface Session {
   /** What the hooks last said about this session, or null where none of them has been heard from. */
   heard: string | null
   pinned: boolean
+  /** The session open in the Claude app, which is not the same as her looking at it right now. */
+  focused: boolean
 }
 
 export interface UsageWindow {
