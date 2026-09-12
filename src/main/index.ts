@@ -25,7 +25,7 @@ import { hooksInstalled, installHooks, removeHooks } from './hooks'
 import { listen } from './live'
 import { keepOrder } from './order'
 import { lastBounds, rememberBounds } from './window-state'
-import { ago, burnVerdict, inWords, stateLabel } from '../shared/words'
+import { ago, burnVerdict, doubtsOf, inWords, stateLabel } from '../shared/words'
 import trayIcon from '../../resources/trayTemplate.png?asset'
 import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
 
@@ -225,16 +225,26 @@ function trayMenu(current: Board | null): Menu {
     icon: dot(DOT[spell.word]),
     enabled: false
   }))
-  const meters = (current?.usage ?? []).map((window) => ({
-    label:
-      `${window.short} ${Math.round(window.used)} % · ` +
-      (window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`) +
-      ` · reset za ${inWords(window.left)}`,
-    icon: dot(
-      { ok: 'green', warn: 'amber', danger: 'red' }[burnVerdict(window.burn, window.left)] as Dot
-    ),
-    enabled: false
-  }))
+  const meters = (current?.usage ?? []).map((window) => {
+    // What a standing number burns is arithmetic on something that stopped moving. Say so instead.
+    const doubt = doubtsOf(window)
+    return {
+      label:
+        `${window.short} ${Math.round(window.used)} % · ` +
+        (doubt.length > 0
+          ? doubt.join(' · ')
+          : (window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`) +
+            ` · reset za ${inWords(window.left)}`),
+      icon: dot(
+        doubt.length > 0
+          ? 'grey'
+          : ({ ok: 'green', warn: 'amber', danger: 'red' }[
+              burnVerdict(window.burn, window.left)
+            ] as Dot)
+      ),
+      enabled: false
+    }
+  })
   return Menu.buildFromTemplate([
     ...(rows.length > 0
       ? rows

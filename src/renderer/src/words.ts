@@ -1,6 +1,14 @@
 import type { ActivityWord, Change, Session, StateWord } from '../../shared/types'
 
-export { ago, burnVerdict, clock, inWords, repoColour, stateLabel } from '../../shared/words'
+export {
+  ago,
+  burnVerdict,
+  clock,
+  doubtsOf,
+  inWords,
+  repoColour,
+  stateLabel
+} from '../../shared/words'
 
 /** The colour of a pull request is its own state: open, merged, closed or still a draft. */
 export function prClass(change: Change, session: Session): string {
