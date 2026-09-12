@@ -49,6 +49,11 @@ focused, which says which session is open rather than whether she is looking at 
 dragged into any order, which is then hers until the `vlastní pořadí ×` chip gives it back. The
 strip under the gauges says what the day went into, summed across every session.
 
+**Which project a card is on** is a stripe down its right edge, in a colour the repository's name
+picks out of a fixed palette; the name itself is in the card's tooltip, because a colour says
+nothing on its own. The `⚙` menu in the bar swaps that for the name in grey in front of the title,
+or turns it off, and remembers the choice.
+
 **Reading the conversation:** the `chat` button on a card opens the transcript beside the board,
 read only and with the harness blocks stripped. The tool calls sit behind a fold that names each one
 and the one argument saying what it was on; what a tool answered is never carried at all. A sweep of
