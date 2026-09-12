@@ -106,12 +106,18 @@ export interface UsageWindow {
   stale: number | null
 }
 
+/** A tool call as the pane shows it: what was called and the one argument that says what on. */
+export interface Call {
+  name: string
+  about: string
+}
+
 /** One turn of a conversation as the board shows it back. */
 export interface Line {
   role: 'user' | 'assistant'
   at: number
   text: string
-  tools: string[]
+  tools: Call[]
 }
 
 /** How long the day spent in one state, across every session. */
