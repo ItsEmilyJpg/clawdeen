@@ -1,54 +1,44 @@
-/* The surfaces, the state colours and the type scale are tokens borrowed from another project, so this reads like it. */
+/*
+ * The surfaces, the state colours and the type scale are tokens borrowed from another project, so this reads like it.
+ * Each token carries both themes in one place: `light-dark()` reads whichever the element's
+ * `color-scheme` says, so the choice below is the only thing that switches them, and a token can
+ * never be defined for one theme and forgotten in the other.
+ */
 :root {
   color-scheme: light dark;
-  --ground: #f4f5f7;
-  --surface: #ffffff;
-  --rule: #e4e8ed;
-  --hover: #eef0f3;
-  --ink: #171e26;
-  --ink-muted: #657078;
-  --faint: #8b96a2;
-  --accent: #175d84;
-  --accent-soft: #e7f1f7;
-  --ok: #1a6547;
-  --ok-soft: #e3f0e9;
-  --warn: #9a3412;
-  --warn-soft: #fdece4;
-  --danger: #a4262c;
-  --danger-soft: #fdeceb;
-  --info: #1f5f8b;
-  --info-soft: #e8f1f8;
-  --muted-soft: #e9ecef;
+  --ground: light-dark(#f4f5f7, #10161c);
+  --surface: light-dark(#ffffff, #161e26);
+  --rule: light-dark(#e4e8ed, #232e39);
+  --hover: light-dark(#eef0f3, #1e2831);
+  --ink: light-dark(#171e26, #e8edf2);
+  --ink-muted: light-dark(#657078, #93a0ac);
+  --faint: light-dark(#8b96a2, #75828e);
+  --accent: light-dark(#175d84, #2bbcff);
+  --accent-soft: light-dark(#e7f1f7, #13212c);
+  --ok: light-dark(#1a6547, #64c39a);
+  --ok-soft: light-dark(#e3f0e9, #12241c);
+  --warn: light-dark(#9a3412, #f0a17a);
+  --warn-soft: light-dark(#fdece4, #2b1710);
+  --danger: light-dark(#a4262c, #ef9a9a);
+  --danger-soft: light-dark(#fdeceb, #2c1414);
+  --info: light-dark(#1f5f8b, #7cb8dd);
+  --info-soft: light-dark(#e8f1f8, #12212c);
+  --muted-soft: light-dark(#e9ecef, #232e39);
   /* What GitHub draws a merged pull request in, so it reads as merged at a glance. */
-  --merged: #8250df;
-  --merged-soft: #f3eeff;
-  --shadow-card: 0 1px 2px rgb(23 30 38 / 0.04), 0 6px 24px rgb(23 30 38 / 0.06);
+  --merged: light-dark(#8250df, #a371f7);
+  --merged-soft: light-dark(#f3eeff, #221a33);
+  --shadow-card:
+    0 1px 2px light-dark(rgb(23 30 38 / 0.04), rgb(0 0 0 / 0.3)),
+    0 6px 24px light-dark(rgb(23 30 38 / 0.06), rgb(0 0 0 / 0.28));
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ground: #10161c;
-    --surface: #161e26;
-    --rule: #232e39;
-    --hover: #1e2831;
-    --ink: #e8edf2;
-    --ink-muted: #93a0ac;
-    --faint: #75828e;
-    --accent: #2bbcff;
-    --accent-soft: #13212c;
-    --ok: #64c39a;
-    --ok-soft: #12241c;
-    --warn: #f0a17a;
-    --warn-soft: #2b1710;
-    --danger: #ef9a9a;
-    --danger-soft: #2c1414;
-    --info: #7cb8dd;
-    --info-soft: #12212c;
-    --muted-soft: #232e39;
-    --merged: #a371f7;
-    --merged-soft: #221a33;
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 24px rgb(0 0 0 / 0.28);
-  }
+/* Her choice, where she made one. Without it the window follows the system, which is the default. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 * {
