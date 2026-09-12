@@ -27,6 +27,9 @@ The same way as on the other projects, written here so it does not depend on rem
   named, and what was verified separated from what was only built.
 - Answers in Czech. Code, commits, issues and pull requests in English. Replies to a review are one
   to three lines a point.
+- **A session says in its title what it is on**, in the shape the `update-session-name` skill gives.
+  `.claude/rules/session-name.md` has what is specific to this repository, and the state word at the
+  end of a title is the closed list in `src/shared/types.ts`, copied off the hook rather than chosen.
 
 ## What this is
 
