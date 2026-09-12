@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, appendFileSync } from 'node:fs'
-import { tmpdir, userInfo } from 'node:os'
+import { homedir, tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 
-import { lastTurn, pendingWork, watchedFor } from '../src/main/transcripts'
+import { lastTurn, pendingWork, touchedPaths, watchedFor } from '../src/main/transcripts'
 
 const rubbish: string[] = []
 
@@ -190,5 +190,63 @@ describe('watchedFor names what a monitor watches', () => {
   it('says nothing about a watcher pointed at something else', async () => {
     const path = transcript([monitor('while true; do sleep 60; done')])
     expect(await watchedFor(path)).toEqual({ kind: 'other', about: null })
+  })
+})
+
+describe('touchedPaths reads the directories a session names', () => {
+  const ran = (command: string, over: Record<string, unknown> = {}): unknown => ({
+    type: 'assistant',
+    message: {
+      role: 'assistant',
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', name: 'Bash', input: { command } }]
+    },
+    ...over
+  })
+
+  it('gives the newest first, from a cd and from a git -C alike', async () => {
+    const path = transcript([
+      ran('cd /one && git status'),
+      ran('git -C /two log --oneline -3'),
+      ran('cd /three && npm test')
+    ])
+    expect(await touchedPaths(path, '/opened')).toEqual(['/three', '/two', '/one'])
+  })
+
+  it('reads a directory a command names only once, at its newest', async () => {
+    const path = transcript([ran('cd /one && ls'), ran('git -C /two status'), ran('cd /one && ls')])
+    expect(await touchedPaths(path, '/opened')).toEqual(['/one', '/two'])
+  })
+
+  it('leaves alone a path the session only read, and one the shell computes', async () => {
+    const path = transcript([
+      said('user', 'the file says: git -C /Users/someone/elsewhere rev-parse'),
+      ran('git -C "$ROOT" status'),
+      ran('cd /named && ls')
+    ])
+    expect(await touchedPaths(path, '/opened')).toEqual(['/named'])
+  })
+
+  it('reads a relative path against the copy the session was opened in, and ~ against home', async () => {
+    const path = transcript([ran('cd ~/dev/thing && ls'), ran('git -C .claude/worktrees/one diff')])
+    expect(await touchedPaths(path, '/opened')).toEqual([
+      '/opened/.claude/worktrees/one',
+      join(homedir(), 'dev/thing')
+    ])
+  })
+
+  it('leaves an agent of its own out of it, because it works somewhere else by design', async () => {
+    const path = transcript([
+      ran('cd /mine && ls'),
+      ran('cd /the-agents && ls', { isSidechain: true })
+    ])
+    expect(await touchedPaths(path, '/opened')).toEqual(['/mine'])
+  })
+
+  it('reads what was appended since the last pass and keeps what it already had', async () => {
+    const path = transcript([ran('cd /first && ls')])
+    expect(await touchedPaths(path, '/opened')).toEqual(['/first'])
+    appendFileSync(path, JSON.stringify(ran('git -C /second status')) + '\n')
+    expect(await touchedPaths(path, '/opened')).toEqual(['/second', '/first'])
   })
 })
