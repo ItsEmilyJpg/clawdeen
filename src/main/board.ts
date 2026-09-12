@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
-import { githubPr, gitlabMr, isPullRequest, remote, viewPr } from './forge'
+import { githubPrs, gitlabMr, isPullRequest, remote, viewPr } from './forge'
 import { branches, records, type SessionRecord } from './records'
 import { record, today } from './history'
 import { liveAt, liveState } from './live'
@@ -202,17 +202,23 @@ async function describe(
   const root = record.originCwd ?? record.cwd ?? ''
   const { host, project } = await remote(root)
   let change: Change | null = null
+  let changes: Change[] = []
   let issue: Link | null = null
   if (host === 'github.com' && project) {
-    change = await githubPr(project, record)
+    changes = await githubPrs(project, record)
+    change = changes.find((one) => one.open) ?? changes.at(-1) ?? null
     // A session that never pushed a branch still names its number in the title, and that number is
     // sometimes the pull request itself: a row saying `bez PR` over a red run is the worst of both.
     const named = numbered(change, record)
     const asPr = named !== null && (await isPullRequest(project, named))
-    if (asPr && named !== null) change = await viewPr(project, named)
+    if (asPr && named !== null) {
+      change = await viewPr(project, named)
+      if (change) changes = [change]
+    }
     issue = githubIssue(host, project, change, record, asPr ? named : null)
   } else if (host && project) {
     change = await gitlabMr(host, project, record)
+    changes = change ? [change] : []
   }
   if (!issue) {
     issue = jiraIssue([change?.branch, ...branches(record), record.title], trackers)
@@ -235,6 +241,7 @@ async function describe(
     active: now - last < ACTIVE_SECONDS,
     issue,
     change,
+    changes,
     state,
     activity: doing.word,
     about: doing.word === 'čeká na tebe' && path ? await watchedFor(path) : null,

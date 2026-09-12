@@ -87,6 +87,9 @@ function createWindow(): void {
     show: false,
     title: 'Claude session',
     titleBarStyle: 'hiddenInset',
+    // Without this the first click into an unfocused window only raises it, so everything on the
+    // board needs clicking twice.
+    acceptFirstMouse: true,
     backgroundColor: '#10161c',
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
   })

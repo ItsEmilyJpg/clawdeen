@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { Session } from '../../../shared/types'
+import type { Change, Session } from '../../../shared/types'
 import { ago, inWords, stateLabel, STATE_CLASS } from '../words'
 
 const props = defineProps<{ session: Session; dragging: boolean }>()
@@ -10,6 +10,17 @@ const emit = defineEmits<{ grab: []; drop: []; peek: [] }>()
 const APP_SESSION = 'claude://code/continue?session='
 const FAILED_SHOWN = 3
 const TOO_LONG = 600
+const CARRIED = new Set(['merged', 'zavřené', 'otevřené', 'koncept'])
+
+/** The colour of a pull request is its own state: open, merged, closed or still a draft. */
+function howItStands(change: Change, session: Session): string {
+  if (change.state === 'merged') return 'pr-merged'
+  if (!change.open) return 'pr-closed'
+  if (change.draft) return 'pr-draft'
+  const red =
+    change === session.change && (session.state === 'CI červené' || session.state === 'konflikt')
+  return red ? 'pr-red' : 'pr-open'
+}
 
 /** Issue first, the change second, and where either is missing the grey word holds its place. */
 const named = computed(() => {
@@ -18,9 +29,13 @@ const named = computed(() => {
     session.issue
       ? { label: session.issue.label, kind: 'issue', url: session.issue.url }
       : { label: 'bez issue', kind: STATE_CLASS['bez PR'] },
-    session.change
-      ? { label: session.change.label, kind: 'pr', url: session.change.url }
-      : { label: session.state, kind: STATE_CLASS[session.state] }
+    ...(session.changes.length > 0
+      ? session.changes.map((change) => ({
+          label: change.label,
+          kind: `pr ${howItStands(change, session)}`,
+          url: change.url
+        }))
+      : [{ label: session.state, kind: STATE_CLASS[session.state] }])
   ]
 })
 
@@ -30,15 +45,22 @@ const standing = computed(() => {
   const rows: { label: string; kind: string; url?: string }[] = []
   if (session.activity) {
     const about = session.about ? ` · ${session.about}` : ''
-    const on = session.since ? ` · ${inWords(Date.now() / 1000 - session.since)}` : ''
+    // How long says something about a task, and nothing at all about how long she has been the one
+    // holding it up, so it only rides with the task states.
+    const timed = session.since && session.activity !== 'čeká na tebe'
+    const on = timed ? ` · ${inWords(Date.now() / 1000 - (session.since as number))}` : ''
     // A task that has been on for longer than this is not progress any more, it is a thing to look at.
-    const hot = session.since && Date.now() / 1000 - session.since > TOO_LONG ? ' hot' : ''
+    const hot = timed && Date.now() / 1000 - (session.since as number) > TOO_LONG ? ' hot' : ''
     rows.push({ label: session.activity + about + on, kind: STATE_CLASS[session.activity] + hot })
   }
-  if (session.change) {
+  // Where the word only repeats what the pull request chip already says in its colour, it goes.
+  if (session.change && !CARRIED.has(session.state)) {
+    // A state that came out of a run links to that run; the others say enough on their own.
+    const checks = session.state.startsWith('CI ') ? `${session.change.url}/checks` : undefined
     rows.push({
       label: stateLabel(session.state, session.change),
-      kind: STATE_CLASS[session.state]
+      kind: STATE_CLASS[session.state],
+      url: checks
     })
   }
   for (const job of (session.change?.failed ?? []).slice(0, FAILED_SHOWN)) {
@@ -81,7 +103,8 @@ function open(url: string): void {
           v-for="(chip, index) in named"
           :key="index"
           :class="['chip', chip.kind]"
-          @click="chip.url && open(chip.url)"
+          :href="chip.url"
+          @click.prevent="chip.url && open(chip.url)"
         >
           {{ chip.label }}
         </a>
@@ -93,7 +116,8 @@ function open(url: string): void {
           v-for="(chip, index) in standing"
           :key="index"
           :class="['chip', chip.kind]"
-          @click="chip.url && open(chip.url)"
+          :href="chip.url"
+          @click.prevent="chip.url && open(chip.url)"
         >
           {{ chip.label }}
         </a>
