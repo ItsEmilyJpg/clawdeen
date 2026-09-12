@@ -91,6 +91,8 @@ export interface Session {
   /** What the hooks last said about this session, or null where none of them has been heard from. */
   heard: string | null
   pinned: boolean
+  /** The session open in the Claude app, which is not the same as her looking at it right now. */
+  focused: boolean
 }
 
 export interface UsageWindow {

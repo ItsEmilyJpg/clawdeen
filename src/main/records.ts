@@ -18,6 +18,7 @@ export interface SessionRecord {
   writtenBranches?: string[]
   prs?: { prNumber?: number; repo?: string; url?: string; state?: string; branch?: string }[]
   lastActivityAt?: number
+  lastFocusedAt?: number
   isArchived?: boolean
   isStarred?: boolean
 }
@@ -61,6 +62,20 @@ export async function records(now: number): Promise<SessionRecord[]> {
     }
   }
   return [...found.values()]
+}
+
+/**
+ * Which session is open in the Claude app. The app stamps `lastFocusedAt` when a card is focused
+ * rather than when the session does anything, so the highest of them is the one on her screen, and
+ * no record carrying the field at all means nothing is claimed.
+ */
+export function openSession(found: SessionRecord[]): string | null {
+  let open: SessionRecord | null = null
+  for (const record of found) {
+    if (!record.lastFocusedAt) continue
+    if (!open || (open.lastFocusedAt ?? 0) < record.lastFocusedAt) open = record
+  }
+  return open?.sessionId ?? null
 }
 
 export function branches(record: SessionRecord): string[] {
