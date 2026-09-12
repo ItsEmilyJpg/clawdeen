@@ -15,6 +15,8 @@ export const TASKS = join('/tmp', `claude-${userInfo().uid}`)
 export const JIRA_MAP = join(home, '.config/claude-sessions/jira.json')
 /** Where a long local check registers itself; absent, the gate states simply never appear. */
 export const GATES = join(home, '.config/claude-sessions/gates.json')
+/** Where the board tells the hooks to reach it: the port it listens on and the token to use. */
+export const LIVE = join(home, '.config/claude-sessions/live.json')
 /** Written by the terminal statusline, refreshed by the script below it. */
 export const USAGE = join(home, '.cache/terminal-welcome/claude-usage.json')
 export const USAGE_REFRESH = join(home, '.config/bash/ai-usage.py')
