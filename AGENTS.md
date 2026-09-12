@@ -49,6 +49,22 @@ disk. `README.md` says what it reads and what it keeps.
 - The words on the board are Czech and they are a closed list in `src/shared/types.ts`. A new state
   is a decision, not an addition: it shows up in the filters, the lanes, the tray and the history.
 
+## Where a worktree lives
+
+Inside the repository, at `.claude/worktrees/<short-name>`, never as a sibling of it in `~/dev`.
+`.git/info/exclude` already hides that directory, so a worktree there is invisible to git and cannot
+be committed into any branch; a sibling like `~/dev/claude-sessions-<something>` is just loose in
+`~/dev` and gets lost among the projects.
+
+```bash
+git worktree add .claude/worktrees/<short-name> -b <branch>
+```
+
+The short name says what the work is, not what the repository is: `open-session`, not
+`claude-sessions-open-session`. `git worktree move` relocates one that landed in the wrong place and
+keeps its uncommitted changes, but **check first that nothing is running out of it** — a build or an
+app started from that path by another session breaks the moment the directory moves.
+
 ## Before a commit
 
 ```bash
