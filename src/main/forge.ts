@@ -166,6 +166,46 @@ interface PullRequest {
   reviewDecision?: string
 }
 
+/** Whether a number is an issue or a pull request, which GitHub only tells by asking. */
+export async function isPullRequest(repo: string, number: number): Promise<boolean> {
+  // The kind of a number never changes, so this is asked once a month rather than once a sweep.
+  const found = await cached<boolean>(`kind:${repo}:${number}`, 30 * 86400, () =>
+    json('gh', ['api', `repos/${repo}/issues/${number}`, '--jq', '.pull_request != null'])
+  )
+  return found === true
+}
+
+/** One pull request, read the way the board needs it. */
+export async function viewPr(
+  repo: string,
+  number: number,
+  chosen: { url?: string; state?: string; branch?: string } = {}
+): Promise<Change | null> {
+  const view =
+    (await cached<PullRequest>(`gh-view:${repo}:${number}:${PR_FIELDS}`, CHECKS_TTL, () =>
+      json('gh', ['pr', 'view', String(number), '-R', repo, '--json', PR_FIELDS])
+    )) ?? {}
+  const state = view.state ?? chosen.state
+  const url = view.url ?? chosen.url
+  if (!url) return null
+  const { checks, failed, progress } = checksOf(view.statusCheckRollup)
+  return {
+    label: `PR #${number}`,
+    token: `PR #${number}`,
+    url,
+    state: stateOf(state, view.isDraft),
+    open: OPEN_STATES.has((state ?? '').toLowerCase()),
+    draft: Boolean(view.isDraft),
+    branch: view.headRefName ?? chosen.branch ?? null,
+    checks,
+    failed,
+    progress,
+    conflict: view.mergeable === 'CONFLICTING',
+    review: view.reviewDecision ?? null,
+    issues: (view.closingIssuesReferences ?? []).map((reference) => reference.number)
+  }
+}
+
 export async function githubPr(repo: string, record: SessionRecord): Promise<Change | null> {
   const recorded = (record.prs ?? []).filter((pr) => pr.prNumber)
   const chosen = recorded.find((pr) => pr.state === 'OPEN') ?? recorded.at(-1) ?? {}
@@ -198,29 +238,7 @@ export async function githubPr(repo: string, record: SessionRecord): Promise<Cha
     }
   }
   if (number === undefined) return null
-  const view =
-    (await cached<PullRequest>(`gh-view:${repo}:${number}:${PR_FIELDS}`, CHECKS_TTL, () =>
-      json('gh', ['pr', 'view', String(number), '-R', repo, '--json', PR_FIELDS])
-    )) ?? {}
-  const state = view.state ?? chosen.state
-  const url = view.url ?? chosen.url
-  if (!url) return null
-  const { checks, failed, progress } = checksOf(view.statusCheckRollup)
-  return {
-    label: `PR #${number}`,
-    token: `PR #${number}`,
-    url,
-    state: stateOf(state, view.isDraft),
-    open: OPEN_STATES.has((state ?? '').toLowerCase()),
-    draft: Boolean(view.isDraft),
-    branch: view.headRefName ?? chosen.branch ?? null,
-    checks,
-    failed,
-    progress,
-    conflict: view.mergeable === 'CONFLICTING',
-    review: view.reviewDecision ?? null,
-    issues: (view.closingIssuesReferences ?? []).map((reference) => reference.number)
-  }
+  return viewPr(repo, number, chosen)
 }
 
 interface MergeRequest {

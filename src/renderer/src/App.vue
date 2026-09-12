@@ -5,7 +5,7 @@ import type { Board, Session, StateWord } from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
 import UsageBar from './components/UsageBar.vue'
-import { clock, inWords, STATE_CLASS, STATE_ORDER } from './words'
+import { clock, inWords, LANES, STATE_CLASS, STATE_ORDER } from './words'
 
 type Filter = StateWord | 'pinned' | ''
 
@@ -17,6 +17,8 @@ const reading = ref<string | null>(null)
 const field = ref<HTMLInputElement | null>(null)
 /** One rule for the whole board: compact by default, everything spelled out when expanded. */
 const expanded = ref(remembered('expanded') === '1')
+/** Two ways to read the same board: the order she arranged, or the workflow the states make. */
+const workflow = ref(remembered('workflow') === '1')
 let stop: (() => void) | null = null
 
 function remembered(key: string): string | null {
@@ -27,13 +29,32 @@ function remembered(key: string): string | null {
   }
 }
 
-function wide(): void {
-  expanded.value = !expanded.value
+function keep(key: string, on: boolean): void {
   try {
-    localStorage.setItem('expanded', expanded.value ? '1' : '0')
+    localStorage.setItem(key, on ? '1' : '0')
   } catch {
     // A window that cannot remember the choice still honours it for as long as it is open.
   }
+}
+
+/** The workflow board, in lanes: what waits on her first, what is only queueing last. */
+const lanes = computed(() =>
+  LANES.map((lane) => ({
+    ...lane,
+    sessions: shown.value.filter((session) =>
+      lane.word ? session.activity === lane.word : session.activity === null
+    )
+  })).filter((lane) => lane.sessions.length > 0)
+)
+
+function wide(): void {
+  expanded.value = !expanded.value
+  keep('expanded', expanded.value)
+}
+
+function lanesOrList(): void {
+  workflow.value = !workflow.value
+  keep('workflow', workflow.value)
 }
 
 function wordsOf(session: Session): StateWord[] {
@@ -131,6 +152,13 @@ onUnmounted(() => {
       <h1>Claude session</h1>
       <UsageBar v-if="!expanded" :windows="board.usage" compact />
       <span class="stamp">{{ board.at ? `naposledy ${clock(board.at)}` : 'načítá se' }}</span>
+      <button
+        class="wider"
+        :title="workflow ? 'Seřadit, jak jsi to nechala' : 'Seřadit podle stavu'"
+        @click="lanesOrList()"
+      >
+        {{ workflow ? '≡' : '⑃' }}
+      </button>
       <button class="wider" :title="expanded ? 'Zúžit' : 'Rozšířit'" @click="wide()">
         {{ expanded ? '⌃' : '⌄' }}
       </button>
@@ -174,7 +202,25 @@ onUnmounted(() => {
       <input ref="field" v-model="search" class="search" type="search" placeholder="hledat  ⌘F" />
     </nav>
 
-    <ul :class="['sessions', expanded ? 'expanded' : 'compact']">
+    <template v-if="workflow">
+      <section v-for="lane in lanes" :key="lane.title" class="lane">
+        <h2 :class="lane.word ? STATE_CLASS[lane.word] : ''">
+          {{ lane.title }} <b>{{ lane.sessions.length }}</b>
+        </h2>
+        <ul :class="['sessions', expanded ? 'expanded' : 'compact']">
+          <SessionCard
+            v-for="session in lane.sessions"
+            :key="session.id"
+            :session="session"
+            :dragging="false"
+            @peek="reading = session.id"
+          />
+        </ul>
+      </section>
+      <p v-if="lanes.length === 0" class="empty">Nic, co by sedělo.</p>
+    </template>
+
+    <ul v-else :class="['sessions', expanded ? 'expanded' : 'compact']">
       <SessionCard
         v-for="session in shown"
         :key="session.id"
@@ -322,5 +368,39 @@ h1 {
 .empty {
   color: var(--ink-muted);
   padding: 16px 2px;
+}
+
+.lane + .lane {
+  margin-top: 16px;
+}
+
+.lane h2.s-waiting {
+  color: var(--warn);
+}
+
+.lane h2.s-working {
+  color: var(--ok);
+}
+
+.lane h2.s-task,
+.lane h2.s-gate {
+  color: var(--info);
+}
+
+.lane h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  background: none;
+}
+
+.lane h2 b {
+  opacity: 0.6;
 }
 </style>

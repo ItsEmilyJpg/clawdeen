@@ -2,13 +2,14 @@
 import { computed } from 'vue'
 
 import type { Session } from '../../../shared/types'
-import { ago, stateLabel, STATE_CLASS } from '../words'
+import { ago, inWords, stateLabel, STATE_CLASS } from '../words'
 
 const props = defineProps<{ session: Session; dragging: boolean }>()
 const emit = defineEmits<{ grab: []; drop: []; peek: [] }>()
 
 const APP_SESSION = 'claude://code/continue?session='
 const FAILED_SHOWN = 3
+const TOO_LONG = 600
 
 /** Issue first, the change second, and where either is missing the grey word holds its place. */
 const named = computed(() => {
@@ -29,7 +30,10 @@ const standing = computed(() => {
   const rows: { label: string; kind: string; url?: string }[] = []
   if (session.activity) {
     const about = session.about ? ` · ${session.about}` : ''
-    rows.push({ label: session.activity + about, kind: STATE_CLASS[session.activity] })
+    const on = session.since ? ` · ${inWords(Date.now() / 1000 - session.since)}` : ''
+    // A task that has been on for longer than this is not progress any more, it is a thing to look at.
+    const hot = session.since && Date.now() / 1000 - session.since > TOO_LONG ? ' hot' : ''
+    rows.push({ label: session.activity + about + on, kind: STATE_CLASS[session.activity] + hot })
   }
   if (session.change) {
     rows.push({
@@ -42,6 +46,14 @@ const standing = computed(() => {
   }
   return rows
 })
+
+/**
+ * The number the Claude sidebar shows in front of the title. Usually the issue; where the title
+ * names the pull request itself, that number, because matching the two lists is the whole point.
+ */
+const mark = computed(
+  () => props.session.issue?.token ?? props.session.change?.token.replace('PR ', '') ?? null
+)
 
 const dot = computed(() => (props.session.activity ? STATE_CLASS[props.session.activity] : ''))
 
@@ -61,7 +73,7 @@ function open(url: string): void {
     <button class="open" :title="session.title" @click="open(APP_SESSION + session.id)" />
     <div class="left">
       <div class="title">
-        <span v-if="session.issue" class="number">{{ session.issue.token }}</span
+        <span v-if="mark" class="number">{{ mark }}</span
         >{{ session.headline }}
       </div>
       <div class="chips">
@@ -168,6 +180,11 @@ function open(url: string): void {
   border-left: 3px solid var(--accent);
 }
 
+/* And what waits on her, in the colour of that state, so it is found without reading a word. */
+.card.s-waiting {
+  border-left: 3px solid var(--warn);
+}
+
 .card.dragging {
   opacity: 0.5;
 }
@@ -251,7 +268,8 @@ function open(url: string): void {
   transform: translateY(-50%);
 }
 
-.sessions.compact .card.pinned {
+.sessions.compact .card.pinned,
+.sessions.compact .card.s-waiting {
   padding-left: 28px;
 }
 
@@ -332,7 +350,8 @@ function open(url: string): void {
   top: 18px;
 }
 
-.sessions.expanded .card.pinned {
+.sessions.expanded .card.pinned,
+.sessions.expanded .card.s-waiting {
   padding-left: 32px;
 }
 

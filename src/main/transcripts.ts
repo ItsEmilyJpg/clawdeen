@@ -110,11 +110,17 @@ const tallies = new Map<string, Tally>()
  * a session that never backgrounded anything is out before the transcript is read at all, and what
  * is read is only what has been appended since the last pass.
  */
+export interface Pending {
+  doing: Doing
+  /** When the oldest task still standing was started, so a row can say how long it has been on. */
+  since: number | null
+}
+
 export async function pendingWork(
   cli: string,
   path: string,
   said?: { queueing: RegExp | null; running: RegExp | null }
-): Promise<Doing | null> {
+): Promise<Pending | null> {
   const outputs = await taskFiles(cli)
   if (outputs.size === 0) return null
   let size: number
@@ -163,12 +169,17 @@ export async function pendingWork(
   let live = 0
   let commands = 0
   let fresh = false
+  let since: number | null = null
+  let queued: Pending | null = null
   for (const id of tally.started) {
     const output = outputs.get(id)
     if (!output) continue
     let wrote: number
+    let born: number
     try {
-      wrote = (await stat(output)).mtimeMs / 1000
+      const seen = await stat(output)
+      wrote = seen.mtimeMs / 1000
+      born = (seen.birthtimeMs || seen.mtimeMs) / 1000
     } catch {
       continue
     }
@@ -177,19 +188,21 @@ export async function pendingWork(
     // is not judged this way: it writes nothing by design, so its file only says when it started.
     if (!tally.monitors.has(id) && moved - wrote > DEAD) continue
     live += 1
+    since = since === null ? born : Math.min(since, born)
     if (tally.monitors.has(id)) continue
     commands += 1
     if (now - wrote >= QUIET) continue
     // A check says in its own output which of the two it is, queueing or running.
     const tail = said?.queueing || said?.running ? await lastOf(output) : ''
-    if (said?.queueing?.test(tail)) return 'queued'
-    if (said?.running?.test(tail)) return 'gating'
-    fresh = true
+    if (said?.queueing?.test(tail)) queued = { doing: 'queued', since: born }
+    else if (said?.running?.test(tail)) queued = { doing: 'gating', since: born }
+    else fresh = true
   }
+  if (queued) return queued
   if (live === 0) return null
-  if (fresh) return 'working'
+  if (fresh) return { doing: 'working', since }
   // Only monitors left: those wait for something outside this session, an issue or another session.
-  return commands === 0 ? 'watching' : 'waiting'
+  return { doing: commands === 0 ? 'watching' : 'waiting', since }
 }
 
 /** The end of a task's output, which is where it says what it is waiting for. */

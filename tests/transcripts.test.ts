@@ -77,7 +77,7 @@ describe('pendingWork', () => {
   it('holds a task that started and never reported back', async () => {
     withTasks('one', 'babc12345')
     const path = transcript([said('user', 'Command running in background with ID: babc12345')])
-    expect(await pendingWork('one', path)).toBe('working')
+    expect((await pendingWork('one', path))?.doing).toBe('working')
   })
 
   it('lets go once the notification arrives', async () => {
@@ -99,7 +99,7 @@ describe('pendingWork', () => {
   it('sees a notification split across two reads', async () => {
     withTasks('three', 'babc12345')
     const path = transcript([said('user', 'Command running in background with ID: babc12345')])
-    expect(await pendingWork('three', path)).toBe('working')
+    expect((await pendingWork('three', path))?.doing).toBe('working')
 
     const notification = JSON.stringify(
       said(
@@ -109,7 +109,7 @@ describe('pendingWork', () => {
     )
     const half = Math.floor(notification.length / 2)
     appendFileSync(path, notification.slice(0, half))
-    expect(await pendingWork('three', path)).toBe('working')
+    expect((await pendingWork('three', path))?.doing).toBe('working')
 
     appendFileSync(path, notification.slice(half) + '\n')
     expect(await pendingWork('three', path)).toBeNull()
@@ -120,19 +120,19 @@ describe('pendingWork tells waiting from working', () => {
   it('calls a monitor watching, because it waits on something outside the session', async () => {
     withTasks('four', 'bmon12345')
     const path = transcript([said('user', 'Monitor started (task bmon12345, persistent')])
-    expect(await pendingWork('four', path)).toBe('watching')
+    expect((await pendingWork('four', path))?.doing).toBe('watching')
   })
 
   it('calls a command that has just written working', async () => {
     withTasks('five', 'bcmd12345')
     const path = transcript([said('user', 'Command running in background with ID: bcmd12345')])
-    expect(await pendingWork('five', path)).toBe('working')
+    expect((await pendingWork('five', path))?.doing).toBe('working')
   })
 
   it('calls a command that has gone quiet waiting', async () => {
     withTasks('six', 'bcmd67890', 20 * 60)
     const path = transcript([said('user', 'Command running in background with ID: bcmd67890')])
-    expect(await pendingWork('six', path)).toBe('waiting')
+    expect((await pendingWork('six', path))?.doing).toBe('waiting')
   })
 })
 

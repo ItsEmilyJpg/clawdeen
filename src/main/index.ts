@@ -8,6 +8,7 @@ import type { Board, Session, StateWord } from '../shared/types'
 import { board } from './board'
 import { chat } from './chat'
 import { transcripts } from './transcripts'
+import { listen } from './live'
 import { keepOrder } from './order'
 import { lastBounds, rememberBounds } from './window-state'
 import { ago, burnVerdict, inWords, stateLabel } from '../shared/words'
@@ -38,7 +39,6 @@ const DOT: { [key in StateWord]: Dot } = {
   'gate ve frontě': 'amber',
   'úloha běží': 'blue',
   'úloha čeká': 'grey',
-  'čeká na jiné': 'grey',
   'čeká na tebe': 'amber',
   'bez PR': 'grey',
   koncept: 'amber',
@@ -288,6 +288,7 @@ void app.whenReady().then(() => {
   createWindow()
   void refresh()
   watchSources()
+  void listen(settle).catch((error) => console.warn(`live: ${(error as Error).message}`))
 
   app.on('activate', () => show())
 })
