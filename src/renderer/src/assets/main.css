@@ -50,6 +50,12 @@
   box-sizing: border-box;
 }
 
+/* Nothing here drew focus at all, and the window is driven from the keyboard as much as the mouse. */
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 body {
   margin: 0;
   background: var(--ground);
@@ -132,6 +138,17 @@ a.chip:hover {
 .s-merged {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.pin {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.undo {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink-muted);
 }
 
 .job {

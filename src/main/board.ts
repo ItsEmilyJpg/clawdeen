@@ -5,6 +5,8 @@ import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
 import { githubPr, gitlabMr, remote } from './forge'
 import { branches, records, type SessionRecord } from './records'
+import { record, today } from './history'
+import { order } from './order'
 import { lastTurn, modified, pendingWork, transcripts } from './transcripts'
 import { usage } from './usage'
 
@@ -174,27 +176,39 @@ async function describe(
     issue,
     change,
     state,
-    activity: await activity(record, now, index, config)
+    activity: await activity(record, now, index, config),
+    pinned: Boolean(record.isStarred)
   }
 }
 
 export async function board(): Promise<Board> {
   const now = Date.now() / 1000
-  const [index, config, trackers, found] = await Promise.all([
+  const [index, config, trackers, found, kept] = await Promise.all([
     transcripts(),
     gates(),
     jiraTrackers(),
-    records(now)
+    records(now),
+    order()
   ])
   const sessions = await Promise.all(
     found.map((record) => describe(record, now, index, config, trackers))
   )
-  // What stands on her answer goes first; the rest stays in the order it last moved.
+  // Where she dragged a card wins over everything. Otherwise what she pinned in Claude comes first,
+  // then what stands on her answer, and the rest stays in the order it last moved.
+  const placed = (session: Session): number => {
+    const at = kept.indexOf(session.id)
+    return at === -1 ? Number.MAX_SAFE_INTEGER : at
+  }
+  // What waits on her answer stays on top even after she has dragged the rest into an order of her
+  // own: a session she has to answer is the one thing that must not end up below the fold.
   sessions.sort(
     (one, other) =>
       Number(one.activity !== 'čeká na tebe') - Number(other.activity !== 'čeká na tebe') ||
+      placed(one) - placed(other) ||
+      Number(!one.pinned) - Number(!other.pinned) ||
       Number(!one.active) - Number(!other.active) ||
       other.last - one.last
   )
-  return { sessions, usage: await usage(now), at: now }
+  record(sessions, now)
+  return { sessions, usage: await usage(now), order: kept, today: today(now), at: now }
 }
