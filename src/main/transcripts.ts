@@ -16,7 +16,7 @@ const TAIL_BYTES = 64 * 1024
 
 export type Turn = 'ended' | 'asking' | 'running'
 /** A task of the session's own: one that is writing, or one that is only waiting for something. */
-export type Doing = 'working' | 'waiting' | 'watching' | 'queued'
+export type Doing = 'working' | 'waiting' | 'watching' | 'queued' | 'gating'
 
 /** Transcript path by CLI session id. The directory is named after the working copy, so only the file matches. */
 export async function transcripts(): Promise<Map<string, string>> {
@@ -61,7 +61,10 @@ export async function lastTurn(path: string): Promise<Turn> {
     }
     if (entry.isSidechain || (entry.type !== 'assistant' && entry.type !== 'user')) continue
     const message = entry.message ?? {}
-    if (entry.type !== 'assistant' || message.stop_reason !== 'tool_use') return 'ended'
+    // A user entry is either a tool coming back or something she typed; in both the turn is in
+    // flight, and reading it as finished is what made a working session look like a waiting one.
+    if (entry.type === 'user') return 'running'
+    if (message.stop_reason !== 'tool_use') return 'ended'
     const asked = (message.content ?? []).some((part) => part?.name && ASKING_TOOLS.has(part.name))
     return asked ? 'asking' : 'running'
   }
@@ -83,6 +86,11 @@ async function taskFiles(cli: string): Promise<Map<string, string>> {
  * minutes is longer than anything of ours stays silent while it works.
  */
 const QUIET = 300
+/**
+ * How far a task may fall behind the session that started it before it stops counting. A session
+ * that has been talking for an hour is not waiting for something that has been silent all that time.
+ */
+const DEAD = 3600
 
 /** What has been read of one transcript, so a sweep reads the new bytes and not the whole file. */
 interface Tally {
@@ -105,13 +113,16 @@ const tallies = new Map<string, Tally>()
 export async function pendingWork(
   cli: string,
   path: string,
-  queueing?: RegExp
+  said?: { queueing: RegExp | null; running: RegExp | null }
 ): Promise<Doing | null> {
   const outputs = await taskFiles(cli)
   if (outputs.size === 0) return null
   let size: number
+  let moved: number
   try {
-    size = (await stat(path)).size
+    const seen = await stat(path)
+    size = seen.size
+    moved = seen.mtimeMs / 1000
   } catch {
     return null
   }
@@ -149,22 +160,33 @@ export async function pendingWork(
   if (tally.started.size === 0) return null
 
   const now = Date.now() / 1000
+  let live = 0
   let commands = 0
   let fresh = false
   for (const id of tally.started) {
-    if (tally.monitors.has(id)) continue
-    commands += 1
     const output = outputs.get(id)
     if (!output) continue
+    let wrote: number
     try {
-      if (now - (await stat(output)).mtimeMs / 1000 >= QUIET) continue
-      // A check that says it is queueing has written recently and is still doing nothing.
-      if (queueing && queueing.test(await lastOf(output))) return 'queued'
-      fresh = true
+      wrote = (await stat(output)).mtimeMs / 1000
     } catch {
       continue
     }
+    // A command that has said nothing for an hour while the session kept moving was killed, or its
+    // notification was lost. Either way it is not something the session is waiting for. A monitor
+    // is not judged this way: it writes nothing by design, so its file only says when it started.
+    if (!tally.monitors.has(id) && moved - wrote > DEAD) continue
+    live += 1
+    if (tally.monitors.has(id)) continue
+    commands += 1
+    if (now - wrote >= QUIET) continue
+    // A check says in its own output which of the two it is, queueing or running.
+    const tail = said?.queueing || said?.running ? await lastOf(output) : ''
+    if (said?.queueing?.test(tail)) return 'queued'
+    if (said?.running?.test(tail)) return 'gating'
+    fresh = true
   }
+  if (live === 0) return null
   if (fresh) return 'working'
   // Only monitors left: those wait for something outside this session, an issue or another session.
   return commands === 0 ? 'watching' : 'waiting'
@@ -182,6 +204,20 @@ async function lastOf(path: string): Promise<string> {
   } finally {
     await handle.close()
   }
+}
+
+/**
+ * What a monitor is watching, read off the call that started it: the description and the command
+ * both tend to name an issue, and that number is the whole point of the row saying it waits.
+ */
+export async function watchedFor(path: string): Promise<string | null> {
+  const lines = (await tail(path)).split('\n')
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (!lines[index].includes('"name":"Monitor"')) continue
+    const found = /#(\d{1,6})/.exec(lines[index])
+    return found ? `#${found[1]}` : null
+  }
+  return null
 }
 
 export async function modified(path: string): Promise<number> {

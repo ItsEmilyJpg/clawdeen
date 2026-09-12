@@ -138,9 +138,12 @@ function link(label: string, url: string, colour: Dot): MenuItemConstructorOptio
 /** The rows of one session, the shape the menu bar plugin had them in: everything on the surface. */
 function trayRows(session: Session): MenuItemConstructorOptions[] {
   const change = session.change
+  const doing = session.activity
+    ? `${session.activity}${session.about ? ` · ${session.about}` : ''}`
+    : ''
   const rows: MenuItemConstructorOptions[] = [
     link(
-      session.headline,
+      doing ? `${session.headline}   —   ${doing}` : session.headline,
       APP_SESSION + session.id,
       session.activity ? DOT[session.activity] : 'grey'
     )
