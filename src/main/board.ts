@@ -5,7 +5,7 @@ import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
 import { branchAt, githubPrs, gitlabMr, isPullRequest, remote, viewPr, workingCopy } from './forge'
 import { branches, openSession, records, type SessionRecord } from './records'
-import { record, today } from './history'
+import { record, standing, today } from './history'
 import { liveAt, liveState } from './live'
 import { order } from './order'
 import {
@@ -321,6 +321,8 @@ async function describe(
         ? ((await watchedFor(path))?.about ?? null)
         : null,
     since: doing.since,
+    // Filled in by board() from the stretch history, which describing one session cannot see.
+    entered: null,
     pinned: Boolean(record.isStarred),
     focused: record.sessionId === open
   }
@@ -339,6 +341,18 @@ export async function board(): Promise<Board> {
   const sessions = await Promise.all(
     found.map((record) => describe(record, now, index, config, trackers, open))
   )
+  // How long a card has stood where it stands, off the stretch the last pass left open, so a lane
+  // can hold its order while the sessions in it work. A word that has only just changed has no
+  // stretch under it yet, and a session doing nothing never gets one.
+  const began = standing()
+  for (const session of sessions) {
+    const held = began.get(session.id)
+    session.entered = session.activity
+      ? held?.word === session.activity
+        ? held.began
+        : Math.round(now)
+      : null
+  }
   // Where she dragged a card wins over everything. Otherwise what she pinned in Claude comes first,
   // then what stands on her answer, and the rest stays in the order it last moved.
   const placed = (session: Session): number => {

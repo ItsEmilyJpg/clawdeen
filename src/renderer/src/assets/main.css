@@ -27,6 +27,8 @@
   /* What GitHub draws a merged pull request in, so it reads as merged at a glance. */
   --merged: light-dark(#8250df, #a371f7);
   --merged-soft: light-dark(#f3eeff, #221a33);
+  /* What a sheet laid over the board dims it with: enough to take the eye, not enough to hide it. */
+  --veil: light-dark(rgb(23 30 38 / 0.3), rgb(0 0 0 / 0.52));
   --shadow-card:
     0 1px 2px light-dark(rgb(23 30 38 / 0.04), rgb(0 0 0 / 0.3)),
     0 6px 24px light-dark(rgb(23 30 38 / 0.06), rgb(0 0 0 / 0.28));
