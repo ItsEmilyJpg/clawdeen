@@ -110,6 +110,14 @@ async function taskFiles(cli: string): Promise<Map<string, string>> {
 }
 
 /**
+ * How a task's own output says it is over. The notification that says the same does not always reach
+ * the transcript, and a row then waited on a command that had long finished. Anchored to the end and
+ * spelled out rather than "anything in brackets": of 722 outputs on this machine 635 ended with an
+ * exit code, 44 with the kill, 42 with nothing at all, and one with a bracket of its own making.
+ */
+const ENDED = /\[(?:killed|exited with code \d+)\]\s*$/
+
+/**
  * A task that has written nothing for this long is waiting for something rather than doing it: a
  * watcher polling for a free machine looks exactly like a compile that has gone quiet, and five
  * minutes is longer than anything of ours stays silent while it works.
@@ -220,6 +228,13 @@ export async function pendingWork(
     } catch {
       continue
     }
+    const tail = await lastOf(output)
+    // A task that has ended says so at the end of its own output, whether or not the notification
+    // saying the same ever arrived.
+    if (ENDED.test(tail)) {
+      tally.ended.add(id)
+      continue
+    }
     // A command that has said nothing for an hour while the session kept moving was killed, or its
     // notification was lost, unless a process is still holding its output: then it is simply quiet.
     // A monitor is not judged this way at all, it writes nothing by design.
@@ -230,7 +245,6 @@ export async function pendingWork(
     commands += 1
     if (now - wrote >= QUIET) continue
     // A check says in its own output which of the two it is, queueing or running.
-    const tail = said?.queueing || said?.running ? await lastOf(output) : ''
     if (said?.queueing?.test(tail)) queued = { doing: 'queued', since: born }
     else if (said?.running?.test(tail)) queued = { doing: 'gating', since: born }
     else {
