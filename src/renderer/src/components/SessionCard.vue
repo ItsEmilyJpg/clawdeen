@@ -107,7 +107,11 @@ function open(url: string): void {
 
 <template>
   <li
-    :class="['card', dot, { active: session.active, pinned: session.pinned, dragging }]"
+    :class="[
+      'card',
+      dot,
+      { active: session.active, pinned: session.pinned, focused: session.focused, dragging }
+    ]"
     :style="{ '--beat-phase': phase }"
     draggable="true"
     @dragstart="emit('grab')"
@@ -232,6 +236,14 @@ function open(url: string): void {
 /* And what waits on her, in the colour of that state, so it is found without reading a word. */
 .card.s-waiting {
   border-left: 3px solid var(--warn);
+}
+
+/* The session open in Claude, ringed rather than striped, because the stripe is already spoken for. */
+.card.focused {
+  border-color: var(--accent);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 1px var(--accent);
 }
 
 .card.dragging {
