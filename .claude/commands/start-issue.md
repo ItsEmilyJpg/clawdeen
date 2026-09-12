@@ -48,6 +48,18 @@ with a worktree:
 npm --prefix "<the new worktree>" install
 ```
 
+Name the session after the issue, because the Claude app opened it as `Issue $1` and that says
+nothing in a list of ten:
+
+```
+mcp__ccd_session_mgmt__set_session_title with session_id "self"
+```
+
+The shape is the one the `update-session-name` skill gives, and the issue is the number, not the
+word: `#$1 · <area> · <what exactly> · bez PR`. Read the skill rather than guessing the shape, and
+leave the state segment out where no hook has handed one over. The state is `bez PR` here by
+construction: this command opens no pull request.
+
 Report the worktree path, the branch and what the issue actually asks for, in your own words rather
 than by pasting the body back. Then stop: the approach goes up as a proposal before it is written,
 per `AGENTS.md`, and the issue text is a request, not an approved plan.
