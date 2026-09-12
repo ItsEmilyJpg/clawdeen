@@ -15,7 +15,7 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { watch } from 'node:fs'
 import { join } from 'node:path'
 
-import type { Board, Session, StateWord, ThemeMode } from '../shared/types'
+import type { Board, Session, StateWord, ThemeMode, UsageWindow } from '../shared/types'
 import { board } from './board'
 import { claimCard, underClaim, type Claim } from './focus'
 import { openSession, records } from './records'
@@ -25,7 +25,7 @@ import { hooksInstalled, installHooks, removeHooks } from './hooks'
 import { listen } from './live'
 import { keepOrder } from './order'
 import { lastBounds, rememberBounds } from './window-state'
-import { ago, burnVerdict, doubtsOf, inWords, stateLabel } from '../shared/words'
+import { ago, burnVerdict, doubtsOf, inWords, stateLabel, usageRows } from '../shared/words'
 import trayIcon from '../../resources/trayTemplate.png?asset'
 import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
 
@@ -86,6 +86,13 @@ function dot(colour: Dot | undefined): NativeImage {
     .resize({ width: 12, height: 12 })
   drawn.set(known, image)
   return image
+}
+
+/** Grey where the reading is doubted, amber for the row that says why, otherwise how fast it burns. */
+function meterDot(window: UsageWindow | null): Dot {
+  if (!window) return 'amber'
+  if (doubtsOf(window).length > 0) return 'grey'
+  return { ok: 'green', warn: 'amber', danger: 'red' }[burnVerdict(window.burn, window.left)] as Dot
 }
 
 /** A file changes in bursts, and the board is not worth building for each line of a transcript. */
@@ -225,26 +232,12 @@ function trayMenu(current: Board | null): Menu {
     icon: dot(DOT[spell.word]),
     enabled: false
   }))
-  const meters = (current?.usage ?? []).map((window) => {
-    // What a standing number burns is arithmetic on something that stopped moving. Say so instead.
-    const doubt = doubtsOf(window)
-    return {
-      label:
-        `${window.short} ${Math.round(window.used)} % · ` +
-        (doubt.length > 0
-          ? doubt.join(' · ')
-          : (window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`) +
-            ` · reset za ${inWords(window.left)}`),
-      icon: dot(
-        doubt.length > 0
-          ? 'grey'
-          : ({ ok: 'green', warn: 'amber', danger: 'red' }[
-              burnVerdict(window.burn, window.left)
-            ] as Dot)
-      ),
-      enabled: false
-    }
-  })
+  // The row without a window is the doubt the windows share, which is why it is drawn in amber.
+  const meters = usageRows(current?.usage ?? []).map(({ label, window }) => ({
+    label,
+    icon: dot(meterDot(window)),
+    enabled: false
+  }))
   return Menu.buildFromTemplate([
     ...(rows.length > 0
       ? rows
