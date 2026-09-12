@@ -42,7 +42,7 @@ async function signedInAccount(): Promise<string> {
 
 export async function records(now: number): Promise<SessionRecord[]> {
   const account = await signedInAccount()
-  const found: SessionRecord[] = []
+  const found = new Map<string, SessionRecord>()
   for await (const path of glob(join(SESSIONS, account, '*', '*.json'))) {
     let record: SessionRecord
     try {
@@ -53,9 +53,14 @@ export async function records(now: number): Promise<SessionRecord[]> {
     }
     if (!record.sessionId || record.isArchived) continue
     if (now - (record.lastActivityAt ?? 0) / 1000 > WINDOW_SECONDS) continue
-    found.push(record)
+    // The same session can sit in two account folders once it has been copied between logins, and
+    // then only the newer copy is the one worth showing.
+    const twin = found.get(record.sessionId)
+    if (!twin || (twin.lastActivityAt ?? 0) < (record.lastActivityAt ?? 0)) {
+      found.set(record.sessionId, record)
+    }
   }
-  return found
+  return [...found.values()]
 }
 
 export function branches(record: SessionRecord): string[] {
