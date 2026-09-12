@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { waitingOn } from '../src/main/board'
 import { checksOf } from '../src/main/forge'
-import { burnOf, burnVerdict, stateLabel } from '../src/shared/words'
+import { openSession } from '../src/main/records'
+import { burnOf, burnVerdict, repoColour, stateLabel } from '../src/shared/words'
 import { LANES } from '../src/renderer/src/words'
 import type { Change } from '../src/shared/types'
 
@@ -165,10 +166,45 @@ describe('waitingOn', () => {
 })
 
 describe('LANES', () => {
-  it('gives the CI wait a lane of its own, under everything that is still hers', () => {
+  it('keeps the CI wait under everything that is still hers', () => {
     const words = LANES.map((lane) => lane.word)
     expect(words).toContain('čeká na CI')
     expect(words.indexOf('čeká na CI')).toBeGreaterThan(words.indexOf('čeká na tebe'))
     expect(words.at(-1)).toBeNull()
+  })
+})
+
+describe('openSession', () => {
+  it('is the one focused last, whatever the sessions have been doing since', () => {
+    expect(
+      openSession([
+        { sessionId: 'first', lastFocusedAt: 1789219744000, lastActivityAt: 1789219749000 },
+        { sessionId: 'focused', lastFocusedAt: 1789219749433, lastActivityAt: 1789219726431 },
+        { sessionId: 'busy', lastFocusedAt: 1789219700000, lastActivityAt: 1789219800000 }
+      ])
+    ).toBe('focused')
+  })
+
+  it('claims nothing where no record carries the field', () => {
+    expect(openSession([{ sessionId: 'one', lastActivityAt: 1789219726431 }])).toBeNull()
+  })
+
+  it('claims nothing without a session at all', () => {
+    expect(openSession([])).toBeNull()
+  })
+})
+
+describe('repoColour', () => {
+  it('gives one repository the same colour every time', () => {
+    expect(repoColour('notes')).toBe(repoColour('notes'))
+  })
+
+  it('tells the repositories on this machine apart', () => {
+    const names = ['notes', 'claude-sessions', 'examplecorp']
+    expect(new Set(names.map(repoColour)).size).toBe(names.length)
+  })
+
+  it('answers with a colour even for a name that says nothing', () => {
+    expect(repoColour('')).toMatch(/^#[0-9a-f]{6}$/)
   })
 })

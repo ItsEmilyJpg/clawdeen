@@ -11,7 +11,7 @@ Everything is local. Nothing is sent anywhere, and the only network calls are th
 
 | Source                                                                             | For                                                                                                                                                                                                                                 |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `~/Library/Application Support/Claude/claude-code-sessions/<account>/<org>/*.json` | the sessions, their titles, working copies and pull requests                                                                                                                                                                        |
+| `~/Library/Application Support/Claude/claude-code-sessions/<account>/<org>/*.json` | the sessions, their titles, working copies, pull requests, and which one is open in the app                                                                                                                                                                        |
 | `~/Library/Application Support/Claude/config.json`                                 | which account the sidebar is showing, so the board lists the same one                                                                                                                                                               |
 | `~/.claude/projects/*/<cli session>.jsonl`                                         | what the session is doing: a tool still running, a question nobody answered, a turn that ended; and which working copy its own commands name, which is where the repository is read from when the session was opened somewhere else |
 | `/tmp/claude-<uid>/*/<cli session>/tasks/*.output`                                 | whether a backgrounded command, monitor or agent is still going                                                                                                                                                                     |
@@ -43,9 +43,16 @@ by: `spálíš za 1 h 49 min · reset za 4 h 25 min`, both of them in the bar at
 the gauges. The numbers and the bar are green while the window outlives its reset, amber within a
 tenth of it, red when it runs out first.
 
-What Claude pins is pinned here, marked with an accent down the side of the card. Cards can be
+What Claude pins is pinned here, marked with an accent down the side of the card. The session open
+in the Claude app is ringed in the same colour, read off the record the app stamps when a card is
+focused, which says which session is open rather than whether she is looking at it. Cards can be
 dragged into any order, which is then hers until the `vlastní pořadí ×` chip gives it back. The
 strip under the gauges says what the day went into, summed across every session.
+
+**Which project a card is on** is a stripe down its right edge, in a colour the repository's name
+picks out of a fixed palette; the name itself is in the card's tooltip, because a colour says
+nothing on its own. The `⚙` menu in the bar swaps that for the name in grey in front of the title,
+or turns it off, and remembers the choice.
 
 **Reading the conversation:** the `chat` button on a card opens the transcript beside the board,
 read only and with the harness blocks stripped. The tool calls sit behind a fold that names each one

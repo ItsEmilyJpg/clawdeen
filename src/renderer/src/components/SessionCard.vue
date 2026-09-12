@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { Change, Session } from '../../../shared/types'
-import { ago, inWords, stateLabel, STATE_CLASS } from '../words'
+import type { Change, ProjectMark, Session } from '../../../shared/types'
+import { ago, inWords, repoColour, stateLabel, STATE_CLASS } from '../words'
 
-const props = defineProps<{ session: Session; dragging: boolean; laned?: boolean }>()
+const props = defineProps<{
+  session: Session
+  dragging: boolean
+  project: ProjectMark
+  laned?: boolean
+}>()
 const emit = defineEmits<{ grab: []; drop: []; peek: [] }>()
 
 const APP_SESSION = 'claude://code/continue?session='
@@ -88,6 +93,9 @@ const mark = computed(
 /** A row has no chip for the issue, so the number in front of the title is the only way to it. */
 const markUrl = computed(() => props.session.issue?.url ?? props.session.change?.url ?? undefined)
 
+/** The repository, which `place` carries in front of the worktree it also names. */
+const repo = computed(() => props.session.place.split(' · ')[0] ?? '')
+
 const dot = computed(() => (props.session.activity ? STATE_CLASS[props.session.activity] : ''))
 
 /** How long one beat of the dot lasts, in step with the `beat` keyframes below. */
@@ -107,7 +115,11 @@ function open(url: string): void {
 
 <template>
   <li
-    :class="['card', dot, { active: session.active, pinned: session.pinned, dragging }]"
+    :class="[
+      'card',
+      dot,
+      { active: session.active, pinned: session.pinned, focused: session.focused, dragging }
+    ]"
     :style="{ '--beat-phase': phase }"
     draggable="true"
     @dragstart="emit('grab')"
@@ -115,8 +127,15 @@ function open(url: string): void {
     @drop.prevent="emit('drop')"
   >
     <button class="open" :title="session.title" @click="open(APP_SESSION + session.id)" />
+    <span
+      v-if="project === 'stripe' && repo"
+      class="stripe"
+      :style="{ background: repoColour(repo) }"
+      :title="repo"
+    />
     <div class="left">
       <div class="title">
+        <span v-if="project === 'name' && repo" class="repo">{{ repo }}</span>
         <a v-if="mark" class="number" :href="markUrl" @click.prevent="markUrl && open(markUrl)">{{
           mark
         }}</a
@@ -232,6 +251,33 @@ function open(url: string): void {
 /* And what waits on her, in the colour of that state, so it is found without reading a word. */
 .card.s-waiting {
   border-left: 3px solid var(--warn);
+}
+
+/* The session open in Claude, ringed rather than striped, because the stripe is already spoken for. */
+.card.focused {
+  border-color: var(--accent);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 1px var(--accent);
+}
+
+/*
+ * Which project the card belongs to, down the right edge because the left one already carries what
+ * she pinned and what waits on her. The name is in the tooltip, since a colour alone says nothing.
+ */
+.stripe {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+}
+
+.repo {
+  color: var(--faint);
+  font-weight: 400;
+  margin-right: 7px;
 }
 
 .card.dragging {
