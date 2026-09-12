@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import type { ProjectMark, Session } from '../../../shared/types'
 import { ago, inWords, prClass, repoColour, stateLabel, STATE_CLASS } from '../words'
@@ -104,15 +104,28 @@ const repo = computed(() => props.session.place.split(' · ')[0] ?? '')
 
 const dot = computed(() => (props.session.activity ? STATE_CLASS[props.session.activity] : ''))
 
-/** How long one beat of the dot lasts, in step with the `beat` keyframes below. */
-const BEAT = 1800
+const card = ref<HTMLLIElement | null>(null)
 
 /**
- * Every beating dot on one clock. A CSS animation starts when its element does, so cards that
- * appeared at different moments beat out of step; a negative delay off the epoch puts them all on
- * the same grid. It is read again whenever the state changes, which is when the animation restarts.
+ * Every beating dot on one clock. A CSS animation is timed from the moment it starts on its own
+ * element, so dots that started at different moments beat out of step, and a delay computed off the
+ * wall clock cannot close that: it is measured from the same private start. Moving the start onto
+ * the document timeline, which every card on the page shares, is what lines them up.
+ *
+ * It hangs off `animationstart` because that is the one moment the alignment can be lost, and the
+ * board restarts a beat for reasons the card cannot see: measured in the running window, a working
+ * card had its animation begin again with neither a mount nor a change of state behind it.
+ *
+ * `subtree` is not optional here. The dot is a pseudo-element, and without it `getAnimations()`
+ * returns nothing at all. Under `prefers-reduced-motion` there is no animation and no event either,
+ * so nothing in here brings one back.
  */
-const phase = computed(() => (dot.value === 's-working' ? `-${Date.now() % BEAT}ms` : '0ms'))
+function alignBeat(): void {
+  const beat = card.value
+    ?.getAnimations({ subtree: true })
+    .find((a): a is CSSAnimation => a instanceof CSSAnimation && a.animationName.startsWith('beat'))
+  if (beat) beat.startTime = 0
+}
 
 function open(url: string): void {
   void window.api.open(url)
@@ -126,8 +139,9 @@ function open(url: string): void {
       dot,
       { active: session.active, pinned: session.pinned, focused: session.focused, dragging }
     ]"
-    :style="{ '--beat-phase': phase }"
+    ref="card"
     draggable="true"
+    @animationstart="alignBeat"
     @dragstart="emit('grab')"
     @dragover.prevent
     @drop.prevent="emit('drop')"
@@ -219,7 +233,6 @@ function open(url: string): void {
 .card.s-working::before {
   background: var(--ok);
   animation: beat 1.8s ease-in-out infinite;
-  animation-delay: var(--beat-phase, 0ms);
 }
 
 @keyframes beat {
