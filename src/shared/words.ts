@@ -1,4 +1,4 @@
-import type { Change, StateWord } from './types'
+import type { Change, StateWord, UsageWindow } from './types'
 
 export function ago(moment: number): string {
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - moment))
@@ -60,6 +60,21 @@ export function burnVerdict(burn: number | null, left: number): 'ok' | 'warn' | 
   if (burn === null) return 'ok'
   if (burn >= left * 1.1) return 'ok'
   return burn >= left * 0.9 ? 'warn' : 'danger'
+}
+
+/**
+ * Why a usage window may not be the current one, in the order it is worth hearing, or empty.
+ *
+ * A percentage nobody could refresh looks exactly like a percentage that has not moved, and every
+ * number on this board is read as a reading taken now. The bar, the tray and the terminal all say
+ * this the same way, so it is said once here.
+ */
+export function doubtsOf(window: UsageWindow): string[] {
+  const parts: string[] = []
+  if (window.stale !== null) parts.push(`stav před ${inWords(window.stale)}`)
+  if (window.error !== null) parts.push(`neobnoveno: ${window.error}`)
+  if (window.otherAccount !== null) parts.push(`účet ${window.otherAccount}`)
+  return parts
 }
 
 /**

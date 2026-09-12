@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { waitingOn } from '../src/main/board'
 import { checksOf } from '../src/main/forge'
 import { openSession } from '../src/main/records'
-import { burnOf, burnVerdict, repoColour, stateLabel } from '../src/shared/words'
+import { burnOf, burnVerdict, doubtsOf, repoColour, stateLabel } from '../src/shared/words'
 import { inLane, LANES } from '../src/renderer/src/words'
-import type { Change, Session } from '../src/shared/types'
+import type { Change, Session, UsageWindow } from '../src/shared/types'
 
 function change(over: Partial<Change> = {}): Change {
   return {
@@ -130,6 +130,44 @@ describe('burnVerdict', () => {
 
   it('is green where nothing has been spent', () => {
     expect(burnVerdict(null, 3600)).toBe('ok')
+  })
+})
+
+describe('doubtsOf', () => {
+  function window(over: Partial<UsageWindow> = {}): UsageWindow {
+    return {
+      key: 'five_hour',
+      label: '5 hodin',
+      short: '5 h',
+      used: 89,
+      resets: 0,
+      left: 3600,
+      pace: null,
+      burn: null,
+      stale: null,
+      error: null,
+      otherAccount: null,
+      ...over
+    }
+  }
+
+  it('says nothing about a window that was just read', () => {
+    expect(doubtsOf(window())).toEqual([])
+  })
+
+  it('says how old the number is', () => {
+    expect(doubtsOf(window({ stale: 35 * 60 }))).toEqual(['stav před 35 min'])
+  })
+
+  it('says why it could not be refreshed, before whose it is', () => {
+    const doubts = doubtsOf(
+      window({ stale: 20 * 60, error: 'token vypršel', otherAccount: 'a@b.cz · Jiná' })
+    )
+    expect(doubts).toEqual(['stav před 20 min', 'neobnoveno: token vypršel', 'účet a@b.cz · Jiná'])
+  })
+
+  it('says whose the number is even where it is otherwise current', () => {
+    expect(doubtsOf(window({ otherAccount: 'a@b.cz · Jiná' }))).toEqual(['účet a@b.cz · Jiná'])
   })
 })
 

@@ -116,7 +116,12 @@ export interface UsageWindow {
   pace: number | null
   /** Seconds until the window is spent at the pace so far, or null while nothing has been spent. */
   burn: number | null
+  /** How old the numbers are, once that is old enough to matter; null while they are fresh. */
   stale: number | null
+  /** Why the last refresh failed, so a standing number never reads as a current one. */
+  error: string | null
+  /** Whose the numbers are, once that is no longer the account the CLI is logged into. */
+  otherAccount: string | null
 }
 
 /** A tool call as the pane shows it: what was called and the one argument that says what on. */

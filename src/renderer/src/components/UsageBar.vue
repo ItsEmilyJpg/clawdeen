@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import type { UsageWindow } from '../../../shared/types'
-import { burnVerdict, clock, inWords } from '../words'
+import { computed } from 'vue'
 
-defineProps<{ windows: UsageWindow[]; compact?: boolean }>()
+import type { UsageWindow } from '../../../shared/types'
+import { burnVerdict, clock, doubtsOf, inWords } from '../words'
+
+const props = defineProps<{ windows: UsageWindow[]; compact?: boolean }>()
+
+/**
+ * The doubt belongs to the one file both windows were read from, not to either of them, so it is
+ * said once for the whole bar. Twice it is an account address wide enough to push the gauges off.
+ */
+const doubt = computed(() => {
+  const doubted = props.windows.find((window) => doubtsOf(window).length > 0)
+  return doubted ? doubtsOf(doubted).join(' · ') : ''
+})
 
 /** Green, amber or red by whether the window outlives its reset; the bar and the numbers share it. */
 function verdict(window: UsageWindow): string {
@@ -23,27 +34,45 @@ function rest(window: UsageWindow): string {
   if (window.pace) parts.push(`tempo ${window.pace.toFixed(1).replace('.', ',')}×`)
   return parts.join(' · ')
 }
+
+/** Old numbers are dimmed rather than recoloured: the colour already means how fast they burn. */
+function doubted(window: UsageWindow): boolean {
+  return doubtsOf(window).length > 0
+}
 </script>
 
 <template>
   <!-- Compact is the default: the two windows ride in the bar as one line each. -->
   <div v-if="compact" class="meters">
-    <span v-for="window in windows" :key="window.key" class="meter" :title="rest(window)">
+    <span
+      v-for="window in windows"
+      :key="window.key"
+      class="meter"
+      :class="{ doubted: doubted(window) }"
+      :title="rest(window)"
+    >
       <span>{{ window.short }}</span>
       <b :class="verdict(window)">{{ Math.round(window.used) }} %</b>
       <span class="track"
         ><i :class="verdict(window)" :style="{ width: `${Math.min(100, window.used)}%` }"
       /></span>
       <!-- Both numbers, because one of them alone decides nothing: what it lasts, against the reset. -->
-      <span class="sentence">
+      <!-- A doubted window says neither: what it burns is arithmetic on a number that stopped moving. -->
+      <span v-if="!doubted(window)" class="sentence">
         <span :class="['burnt', verdict(window)]">{{ burnt(window) }}</span> ·
         {{ until(window) }}
       </span>
     </span>
+    <span v-if="doubt" class="doubt">{{ doubt }}</span>
   </div>
 
   <section v-else class="usage">
-    <div v-for="window in windows" :key="window.key" class="gauge">
+    <div
+      v-for="window in windows"
+      :key="window.key"
+      class="gauge"
+      :class="{ doubted: doubted(window) }"
+    >
       <div class="head">
         <span>{{ window.label }}</span>
         <b :class="verdict(window)">{{ Math.round(window.used) }} %</b>
@@ -52,9 +81,12 @@ function rest(window: UsageWindow): string {
         ><i :class="verdict(window)" :style="{ width: `${Math.min(100, window.used)}%` }"
       /></span>
       <div class="meta">
-        <span :class="verdict(window)">{{ burnt(window) }}</span> · {{ rest(window) }}
+        <template v-if="!doubted(window)"
+          ><span :class="verdict(window)">{{ burnt(window) }}</span> · </template
+        >{{ rest(window) }}
       </div>
     </div>
+    <p v-if="doubt" class="doubt">{{ doubt }}</p>
   </section>
 </template>
 
@@ -117,6 +149,31 @@ function rest(window: UsageWindow): string {
 
 .meter .track i.danger {
   background: var(--danger);
+}
+
+/*
+ * A doubted window keeps its place and its number, because the number is still the last thing that
+ * was true. It only stops looking like a reading taken now: the bar fades and the sentence beside it
+ * says what is wrong instead of what the number burns.
+ */
+.meter.doubted b,
+.meter.doubted .track,
+.gauge.doubted .head b,
+.gauge.doubted .bar {
+  opacity: 0.55;
+}
+
+/* Said once for the bar, so it may be as long as an address and still wrap rather than push. */
+.meters .doubt,
+.usage .doubt {
+  font-size: 11px;
+  color: var(--warn);
+  white-space: normal;
+}
+
+.usage .doubt {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .meter b.ok,
