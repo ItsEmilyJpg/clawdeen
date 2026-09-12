@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { checksOf } from '../src/main/forge'
+import { openSession } from '../src/main/records'
 import { burnOf, burnVerdict, stateLabel } from '../src/shared/words'
 import type { Change } from '../src/shared/types'
 
@@ -127,5 +128,25 @@ describe('burnVerdict', () => {
 
   it('is green where nothing has been spent', () => {
     expect(burnVerdict(null, 3600)).toBe('ok')
+  })
+})
+
+describe('openSession', () => {
+  it('is the one focused last, whatever the sessions have been doing since', () => {
+    expect(
+      openSession([
+        { sessionId: 'first', lastFocusedAt: 1789219744000, lastActivityAt: 1789219749000 },
+        { sessionId: 'focused', lastFocusedAt: 1789219749433, lastActivityAt: 1789219726431 },
+        { sessionId: 'busy', lastFocusedAt: 1789219700000, lastActivityAt: 1789219800000 }
+      ])
+    ).toBe('focused')
+  })
+
+  it('claims nothing where no record carries the field', () => {
+    expect(openSession([{ sessionId: 'one', lastActivityAt: 1789219726431 }])).toBeNull()
+  })
+
+  it('claims nothing without a session at all', () => {
+    expect(openSession([])).toBeNull()
   })
 })
