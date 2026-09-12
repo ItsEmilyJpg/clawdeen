@@ -341,16 +341,23 @@ function open(url: string): void {
   text-decoration: underline;
 }
 
-/* A chip with nowhere to go is a label, and the click on it belongs to the card under it. */
-.chip:not([href]) {
-  pointer-events: none;
-}
-
+/*
+ * The row of chips has to sit above the card button for a link on it to be clickable, and that lifts
+ * the whole box with it: the empty half of a 260 pixel column, the gaps between the chips, the strip
+ * under a wrapped line. Measured in the running window that was a quarter of the card swallowing the
+ * click and opening nothing. So the box is transparent and only a chip that leads somewhere takes
+ * the click back; a chip with nowhere to go is a label, and the click on it belongs to the card.
+ */
 .chips {
   position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  pointer-events: none;
+}
+
+.chip[href] {
+  pointer-events: auto;
 }
 
 .meta {
@@ -369,9 +376,12 @@ function open(url: string): void {
      the name. The keyboard still finds them, because focus counts as being there. */
   opacity: 0;
   transition: opacity 0.15s ease;
+  /* The gap between the two, and the box around them while they are invisible, belong to the card. */
+  pointer-events: none;
 }
 
 .act {
+  pointer-events: auto;
   border: 0;
   border-radius: 9999px;
   padding: 2px 9px;
