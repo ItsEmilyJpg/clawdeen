@@ -9,6 +9,7 @@ export const STATE_CLASS: { [key in StateWord]: string } = {
   'gate ve frontě': 's-queued',
   'úloha běží': 's-task',
   'úloha čeká': 's-queued',
+  'čeká na jiné': 's-queued',
   'čeká na tebe': 's-waiting',
   'bez PR': 's-none',
   koncept: 's-draft',

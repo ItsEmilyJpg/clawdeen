@@ -11,13 +11,19 @@ const STALE_LOCK = 900
 export interface GateConfig {
   lock: string
   running: Set<string>
+  /** What a check prints while it waits for its turn, which is how a queued one is known. */
+  queueing: RegExp | null
 }
 
 /** Where a long local check registers itself, kept beside this repository rather than in it. */
 export async function gates(): Promise<GateConfig | null> {
-  let config: { registry?: string; lock?: string }
+  let config: { registry?: string; lock?: string; queueing?: string }
   try {
-    config = JSON.parse(await readFile(GATES, 'utf8')) as { registry?: string; lock?: string }
+    config = JSON.parse(await readFile(GATES, 'utf8')) as {
+      registry?: string
+      lock?: string
+      queueing?: string
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
       console.warn(`${GATES}: ${(error as Error).name}`)
@@ -37,7 +43,15 @@ export async function gates(): Promise<GateConfig | null> {
       }
     }
   }
-  return { lock: config.lock ?? '', running }
+  let queueing: RegExp | null = null
+  if (config.queueing) {
+    try {
+      queueing = new RegExp(config.queueing)
+    } catch (error) {
+      console.warn(`${GATES}: queueing is not a pattern, ${(error as Error).message}`)
+    }
+  }
+  return { lock: config.lock ?? '', running, queueing }
 }
 
 /**

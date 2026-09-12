@@ -15,7 +15,26 @@ const search = ref('')
 const dragged = ref<string | null>(null)
 const reading = ref<string | null>(null)
 const field = ref<HTMLInputElement | null>(null)
+/** One rule for the whole board: compact by default, everything spelled out when expanded. */
+const expanded = ref(remembered('expanded') === '1')
 let stop: (() => void) | null = null
+
+function remembered(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function wide(): void {
+  expanded.value = !expanded.value
+  try {
+    localStorage.setItem('expanded', expanded.value ? '1' : '0')
+  } catch {
+    // A window that cannot remember the choice still honours it for as long as it is open.
+  }
+}
 
 function wordsOf(session: Session): StateWord[] {
   return session.activity ? [session.activity, session.state] : [session.state]
@@ -110,10 +129,14 @@ onUnmounted(() => {
   <div class="shell">
     <header class="bar drag">
       <h1>Claude session</h1>
+      <UsageBar v-if="!expanded" :windows="board.usage" compact />
       <span class="stamp">{{ board.at ? `naposledy ${clock(board.at)}` : 'načítá se' }}</span>
+      <button class="wider" :title="expanded ? 'Zúžit' : 'Rozšířit'" @click="wide()">
+        {{ expanded ? '⌃' : '⌄' }}
+      </button>
     </header>
 
-    <UsageBar :windows="board.usage" />
+    <UsageBar v-if="expanded" :windows="board.usage" />
 
     <p v-if="board.today.length > 0" class="today">
       <span class="what">dnes</span>
@@ -151,7 +174,7 @@ onUnmounted(() => {
       <input ref="field" v-model="search" class="search" type="search" placeholder="hledat  ⌘F" />
     </nav>
 
-    <ul class="sessions">
+    <ul :class="['sessions', expanded ? 'expanded' : 'compact']">
       <SessionCard
         v-for="session in shown"
         :key="session.id"
@@ -184,25 +207,36 @@ onUnmounted(() => {
   top: 0;
   z-index: 5;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  height: 52px;
+  /* A rail down the side of the screen is half the width of a window, so the bar gives way. */
+  flex-wrap: wrap;
+  row-gap: 4px;
+  column-gap: 18px;
+  min-height: 52px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   margin: 0 -20px 14px;
-  padding: 0 20px 0 88px;
+  padding-right: 20px;
+  padding-left: 88px;
   background: var(--ground);
   border-bottom: 1px solid var(--rule);
 }
 
 h1 {
-  font-size: 21px;
-  letter-spacing: -0.02em;
+  font-size: 17px;
+  letter-spacing: -0.01em;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .stamp {
   color: var(--ink-muted);
   font-size: 11px;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .today {
@@ -266,6 +300,23 @@ h1 {
   margin: 0;
   display: grid;
   gap: 8px;
+}
+
+.sessions.compact {
+  gap: 5px;
+}
+
+.wider {
+  border: 0;
+  border-radius: 9999px;
+  width: 24px;
+  height: 24px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  background: var(--muted-soft);
+  color: var(--ink-muted);
+  cursor: pointer;
 }
 
 .empty {

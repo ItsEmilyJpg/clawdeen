@@ -38,6 +38,7 @@ const DOT: { [key in StateWord]: Dot } = {
   'gate ve frontě': 'amber',
   'úloha běží': 'blue',
   'úloha čeká': 'grey',
+  'čeká na jiné': 'grey',
   'čeká na tebe': 'amber',
   'bez PR': 'grey',
   koncept: 'amber',

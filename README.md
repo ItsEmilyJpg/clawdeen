@@ -29,12 +29,17 @@ says so on every start.
 ## The words a row can say
 
 **What the session is doing:** `pracuje`, `gate běží`, `gate ve frontě`, `úloha běží`,
+`úloha čeká` (a monitor, or a backgrounded command that has written nothing for five minutes),
 `čeká na tebe`. **Where its change stands:** `bez PR`, `koncept`, `konflikt`, `CI běží`,
-`CI červené`, `změny žádané`, `k mergi`, `k review`, `sloučené`, `zavřené`. A red CI also names the
+`CI červené`, `změny žádané`, `k mergi`, `k review`, `merged`, `zavřené`. A red CI also names the
 job that failed and links to it.
 
 A session waiting on an answer is sorted to the top, its dot turns amber, and the tray counts it.
-While a set of checks is running the word carries how many are done and how long it has been going.
+While a set of checks is running the word carries how many are done and how long it has been going;
+once the run is over it says how long ago it finished.
+
+The gauges say how long each usage window lasts at the pace so far, and the numbers and the bar are
+green while it outlives its reset, amber within a tenth of it, red when it runs out first.
 
 What Claude pins is pinned here, marked with an accent down the side of the card. Cards can be
 dragged into any order, which is then hers until the `vlastní pořadí ×` chip gives it back. The
