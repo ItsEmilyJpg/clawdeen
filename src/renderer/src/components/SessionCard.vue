@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { Change, ProjectMark, Session } from '../../../shared/types'
-import { ago, inWords, repoColour, stateLabel, STATE_CLASS } from '../words'
+import type { ProjectMark, Session } from '../../../shared/types'
+import { ago, inWords, prClass, repoColour, stateLabel, STATE_CLASS } from '../words'
 
 const props = defineProps<{
   session: Session
@@ -10,21 +10,27 @@ const props = defineProps<{
   project: ProjectMark
   laned?: boolean
 }>()
-const emit = defineEmits<{ grab: []; drop: []; peek: [] }>()
+const emit = defineEmits<{
+  grab: []
+  drop: []
+  peek: []
+  detail: [spot: { left: number; top: number }]
+}>()
 
 const APP_SESSION = 'claude://code/continue?session='
 const FAILED_SHOWN = 3
 const TOO_LONG = 600
 const CARRIED = new Set(['merged', 'zavřené', 'otevřené', 'koncept'])
 
-/** The colour of a pull request is its own state: open, merged, closed or still a draft. */
-function howItStands(change: Change, session: Session): string {
-  if (change.state === 'merged') return 'pr-merged'
-  if (!change.open) return 'pr-closed'
-  if (change.draft) return 'pr-draft'
-  const red =
-    change === session.change && (session.state === 'CI červené' || session.state === 'konflikt')
-  return red ? 'pr-red' : 'pr-open'
+/**
+ * The sheet opens over the row it belongs to, so the row says where it is: the card is measured at
+ * the moment of the click, because the board reorders itself underneath between sweeps.
+ */
+function expand(event: MouseEvent): void {
+  const card = (event.currentTarget as HTMLElement).closest('.card')
+  if (!card) return
+  const at = card.getBoundingClientRect()
+  emit('detail', { left: at.left, top: at.top })
 }
 
 /** Issue first, the change second, and where either is missing the grey word holds its place. */
@@ -37,7 +43,7 @@ const named = computed(() => {
     ...(session.changes.length > 0
       ? session.changes.map((change) => ({
           label: change.label,
-          kind: `pr ${howItStands(change, session)}`,
+          kind: `pr ${prClass(change, session)}`,
           url: change.url
         }))
       : [{ label: session.state, kind: `${STATE_CLASS[session.state]} spare` }])
@@ -167,7 +173,10 @@ function open(url: string): void {
       </div>
       <div class="meta">{{ session.place }} · {{ ago(session.last) }}</div>
     </div>
-    <button class="peek" title="Přečíst chat" @click.stop="emit('peek')">chat</button>
+    <div class="acts">
+      <button class="act" title="Vše, co se o session ví" @click.stop="expand">detail</button>
+      <button class="act" title="Přečíst chat" @click.stop="emit('peek')">chat</button>
+    </div>
   </li>
 </template>
 
@@ -338,9 +347,18 @@ function open(url: string): void {
   font-size: 11px;
 }
 
-/* Reading the conversation is the one thing the card does besides opening the session. */
-.peek {
+/* The two things the card does besides opening the session: unfold what it knows, and read the chat. */
+.acts {
   position: absolute;
+  display: flex;
+  gap: 4px;
+  /* They belong to the row under the cursor, and the width they took on every other row belongs to
+     the name. The keyboard still finds them, because focus counts as being there. */
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.act {
   border: 0;
   border-radius: 9999px;
   padding: 2px 9px;
@@ -350,14 +368,15 @@ function open(url: string): void {
   background: var(--muted-soft);
   color: var(--ink-muted);
   cursor: pointer;
-  /* It belongs to the row under the cursor, and the width it took on every other row belongs to
-     the name. The keyboard still finds it, because focus counts as being there. */
-  opacity: 0;
-  transition: opacity 0.15s ease;
 }
 
-.card:hover .peek,
-.peek:focus-visible {
+.act:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.card:hover .acts,
+.acts:focus-within {
   opacity: 1;
 }
 
@@ -371,7 +390,7 @@ function open(url: string): void {
   grid-template-columns: minmax(0, 1fr) 150px minmax(0, 260px) minmax(0, 170px);
   align-items: center;
   column-gap: 14px;
-  padding: 8px 56px 8px 30px;
+  padding: 8px 104px 8px 30px;
 }
 
 .sessions.compact .card::before {
@@ -420,7 +439,7 @@ function open(url: string): void {
   direction: rtl;
 }
 
-.sessions.compact .peek {
+.sessions.compact .acts {
   top: 50%;
   right: 10px;
   transform: translateY(-50%);
@@ -429,7 +448,7 @@ function open(url: string): void {
 /*
  * A narrow window drops what it can spare, and what it can spare is never the name: first where the
  * worktree is, then the words that only say something is absent, then the issue and the change, and
- * last the reading of the chat. At 420 pixels the name used to be three letters and an ellipsis
+ * last the two controls. At 420 pixels the name used to be three letters and an ellipsis
  * while a state nobody had to read kept 240 of the 380.
  */
 @media (max-width: 1000px) {
@@ -469,7 +488,7 @@ function open(url: string): void {
     padding-right: 12px;
   }
 
-  .sessions.compact .peek {
+  .sessions.compact .acts {
     display: none;
   }
 }
@@ -481,7 +500,8 @@ function open(url: string): void {
   column-gap: 16px;
   align-items: start;
   border-radius: 12px;
-  padding: 12px 14px 12px 34px;
+  /* The strip on the right is the controls', so the states column never runs underneath them. */
+  padding: 12px 114px 12px 34px;
 }
 
 .sessions.expanded .card::before {
@@ -524,12 +544,8 @@ function open(url: string): void {
   justify-content: flex-end;
 }
 
-.sessions.expanded .peek {
+.sessions.expanded .acts {
   top: 10px;
   right: 10px;
-}
-
-.sessions.expanded .card:hover .peek {
-  opacity: 1;
 }
 </style>
