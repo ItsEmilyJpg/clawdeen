@@ -17,6 +17,7 @@ import { join } from 'node:path'
 
 import type { Board, Session, StateWord, ThemeMode } from '../shared/types'
 import { board } from './board'
+import { openSession, records } from './records'
 import { chat } from './chat'
 import { transcripts } from './transcripts'
 import { hooksInstalled, installHooks, removeHooks } from './hooks'
@@ -88,6 +89,14 @@ function dot(colour: Dot | undefined): NativeImage {
 
 /** A file changes in bursts, and the board is not worth building for each line of a transcript. */
 const SETTLE = 400
+/**
+ * Which card is open in the app is not worth that wait. Measured: the records read in 63 to 83 ms,
+ * a whole board is 72 ms on a warm `gh` cache and 1624 ms once it has gone cold, and the settle
+ * above adds its own 400 and restarts on the next write.
+ */
+const FOCUS_SETTLE = 60
+/** How long the board's own claim outranks the records. Past this the app is simply not agreeing. */
+const CLAIM_TTL = 8000
 /** Nothing watches a lock inside a worktree or a pull request on GitHub, so the board is swept anyway. */
 const SWEEP = 15_000
 
@@ -97,6 +106,13 @@ let latest: Board | null = null
 let waiting = new Set<string>()
 let announced = false
 let settling: NodeJS.Timeout | null = null
+let focusing: NodeJS.Timeout | null = null
+/**
+ * What the board itself opened, and when. The app writes its own record 1 to 3.5 seconds after the
+ * click, and every pass in between reads that stale record: without this the mark set on opening is
+ * wiped by the next sweep and the wait is back.
+ */
+let claimed: { id: string; at: number; wasOpen: string | null } | null = null
 let leaving = false
 let wired = false
 
@@ -154,7 +170,7 @@ function link(label: string, url: string, colour: Dot): MenuItemConstructorOptio
     label,
     icon: dot(colour),
     click: (): void => {
-      void shell.openExternal(url)
+      openUrl(url)
     }
   }
 }
@@ -291,7 +307,7 @@ function announce(sessions: Session[]): void {
       body: [session.headline, session.place].filter(Boolean).join(' — ')
     })
     notification.on('click', () => {
-      void shell.openExternal(APP_SESSION + session.id)
+      openUrl(APP_SESSION + session.id)
     })
     notification.show()
   }
@@ -301,7 +317,7 @@ function announce(sessions: Session[]): void {
 
 async function refresh(): Promise<void> {
   try {
-    latest = await board()
+    latest = applyClaim(await board())
   } catch (error) {
     console.error(`board: ${(error as Error).stack}`)
     return
@@ -325,10 +341,97 @@ function settle(): void {
   }, SETTLE)
 }
 
+/**
+ * Which card the app has open is read off the records alone, so it does not have to wait behind a
+ * settle meant for transcripts or behind `gh`. Nothing else on the board is touched: the rest of
+ * this pass is still whatever the last full one worked out, and that pass is on its way anyway.
+ */
+async function focusPass(): Promise<void> {
+  if (!latest) return
+  try {
+    markFocused(withClaim(openSession(await records(Date.now() / 1000))))
+  } catch (error) {
+    console.warn(`focus: ${(error as Error).message}`)
+  }
+}
+
+/**
+ * The claim outranks the records only while they still say what they said when it was made. The
+ * moment they move at all the records win, whether they have caught up with the claim or she has
+ * since opened something else in the app herself: a board that insists on a card she has left is
+ * worse than one that is late.
+ */
+function withClaim(open: string | null): string | null {
+  if (!claimed) return open
+  if (open !== claimed.wasOpen || Date.now() - claimed.at > CLAIM_TTL) {
+    claimed = null
+    return open
+  }
+  return claimed.id
+}
+
+/** A whole board is built with the records' idea of focus, which the claim has to survive. */
+function applyClaim(built: Board): Board {
+  const open = built.sessions.find((session) => session.focused)?.id ?? null
+  const wanted = withClaim(open)
+  if (wanted === open) return built
+  return {
+    ...built,
+    sessions: built.sessions.map((session) => ({ ...session, focused: session.id === wanted }))
+  }
+}
+
+/** One place says which card is the open one, so the two ways of learning it cannot disagree. */
+function markFocused(id: string | null): void {
+  if (!latest) return
+  if ((latest.sessions.find((session) => session.focused)?.id ?? null) === id) return
+  latest = {
+    ...latest,
+    sessions: latest.sessions.map((session) => ({ ...session, focused: session.id === id }))
+  }
+  if (window && !window.isDestroyed()) window.webContents.send('board', latest)
+}
+
+/**
+ * Opening a session from the board is the one moment the app's own record is not needed, because
+ * the board is the one doing the opening. That record is worth waiting for nowhere: measured, it
+ * lands 1 to 3.5 seconds after the click, and it is the app that is late, not this.
+ */
+function openUrl(url: string): void {
+  if (url.startsWith(APP_SESSION)) {
+    const id = url.slice(APP_SESSION.length)
+    if (latest?.sessions.some((session) => session.id === id)) {
+      claimed = {
+        id,
+        at: Date.now(),
+        wasOpen: latest.sessions.find((session) => session.focused)?.id ?? null
+      }
+      markFocused(id)
+    }
+  }
+  void shell.openExternal(url)
+}
+
+function focusSettle(): void {
+  if (focusing) clearTimeout(focusing)
+  focusing = setTimeout(() => {
+    focusing = null
+    void focusPass()
+  }, FOCUS_SETTLE)
+}
+
 function watchSources(): void {
   for (const root of [SESSIONS, TRANSCRIPTS, TASKS]) {
     try {
-      watch(root, { recursive: true, persistent: false }, settle)
+      // Only the records carry the focus, so only they are worth the second, faster pass.
+      const heard =
+        root === SESSIONS
+          ? (): void => {
+              focusSettle()
+              settle()
+            }
+          : settle
+      watch(root, { recursive: true, persistent: false }, heard)
     } catch (error) {
       console.warn(`watch ${root}: ${(error as Error).message}`)
     }
@@ -341,7 +444,7 @@ void app.whenReady().then(() => {
   app.on('browser-window-created', (_event, created) => optimizer.watchWindowShortcuts(created))
 
   ipcMain.handle('board', async () => latest ?? (await board()))
-  ipcMain.handle('open', (_event, url: string) => shell.openExternal(url))
+  ipcMain.handle('open', (_event, url: string) => openUrl(url))
   ipcMain.handle('chat', async (_event, cli: string) => {
     const path = (await transcripts()).get(cli)
     return path ? chat(path) : []
