@@ -206,6 +206,23 @@ export async function viewPr(
   }
 }
 
+/** Every pull request a session has open beside it, not only the one it is standing on. */
+export async function githubPrs(repo: string, record: SessionRecord): Promise<Change[]> {
+  const numbers = [
+    ...new Set((record.prs ?? []).map((pr) => pr.prNumber).filter(Boolean))
+  ] as number[]
+  if (numbers.length === 0) {
+    const one = await githubPr(repo, record)
+    return one ? [one] : []
+  }
+  const found = await Promise.all(
+    numbers.map((number) =>
+      viewPr(repo, number, (record.prs ?? []).find((pr) => pr.prNumber === number) ?? {})
+    )
+  )
+  return found.filter((change): change is Change => change !== null)
+}
+
 export async function githubPr(repo: string, record: SessionRecord): Promise<Change | null> {
   const recorded = (record.prs ?? []).filter((pr) => pr.prNumber)
   const chosen = recorded.find((pr) => pr.state === 'OPEN') ?? recorded.at(-1) ?? {}

@@ -170,6 +170,7 @@ export async function pendingWork(
   let commands = 0
   let fresh = false
   let since: number | null = null
+  let freshSince: number | null = null
   let queued: Pending | null = null
   for (const id of tally.started) {
     const output = outputs.get(id)
@@ -196,11 +197,16 @@ export async function pendingWork(
     const tail = said?.queueing || said?.running ? await lastOf(output) : ''
     if (said?.queueing?.test(tail)) queued = { doing: 'queued', since: born }
     else if (said?.running?.test(tail)) queued = { doing: 'gating', since: born }
-    else fresh = true
+    else {
+      // The row says how long the task that is actually writing has been on, not how long the
+      // oldest thing in the session has been standing around.
+      fresh = true
+      freshSince = freshSince === null ? born : Math.min(freshSince, born)
+    }
   }
   if (queued) return queued
   if (live === 0) return null
-  if (fresh) return { doing: 'working', since }
+  if (fresh) return { doing: 'working', since: freshSince ?? since }
   // Only monitors left: those wait for something outside this session, an issue or another session.
   return { doing: commands === 0 ? 'watching' : 'waiting', since }
 }

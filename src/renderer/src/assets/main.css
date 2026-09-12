@@ -115,6 +115,30 @@ a.chip:hover {
   color: var(--accent);
 }
 
+/* A pull request is drawn in the state it is in, the way GitHub draws it. */
+.pr.pr-open {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.pr.pr-merged {
+  background: var(--merged-soft);
+  color: var(--merged);
+}
+
+.pr.pr-closed,
+.pr.pr-red {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Grey like a draft, but outlined so it does not read as the grey of no pull request at all. */
+.pr.pr-draft {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--faint);
+  color: var(--ink-muted);
+}
+
 .s-draft,
 .s-changes,
 .s-waiting {

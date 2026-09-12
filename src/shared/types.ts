@@ -67,6 +67,8 @@ export interface Session {
   active: boolean
   issue: Link | null
   change: Change | null
+  /** Every pull request beside the session, the one it stands on first. */
+  changes: Change[]
   state: StateWord
   activity: ActivityWord | null
   /** What the session is waiting on, where it is known: the issue a monitor is watching. */
