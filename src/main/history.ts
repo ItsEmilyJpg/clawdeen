@@ -75,3 +75,15 @@ export function today(now: number): Spell[] {
     .filter((row) => row.seconds > 0)
     .map((row) => ({ word: row.word as Spell['word'], seconds: row.seconds }))
 }
+
+/**
+ * The stretch each session is in the middle of, as the last pass left it. A lane reads it to stand
+ * still: how long a card has been in its state does not change while the session works, where the
+ * time of its last activity changes with every keystroke.
+ */
+export function standing(): Map<string, { word: string; began: number }> {
+  const rows = open()
+    .prepare('select session, word, began from spells where ended is null')
+    .all() as { session: string; word: string; began: number }[]
+  return new Map(rows.map((row) => [row.session, { word: row.word, began: row.began }]))
+}
