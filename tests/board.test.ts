@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
+import { waitingOn } from '../src/main/board'
 import { checksOf } from '../src/main/forge'
 import { burnOf, burnVerdict, stateLabel } from '../src/shared/words'
+import { LANES } from '../src/renderer/src/words'
 import type { Change } from '../src/shared/types'
 
 function change(over: Partial<Change> = {}): Change {
@@ -127,5 +129,46 @@ describe('burnVerdict', () => {
 
   it('is green where nothing has been spent', () => {
     expect(burnVerdict(null, 3600)).toBe('ok')
+  })
+})
+
+describe('waitingOn', () => {
+  const idle = { word: 'čeká na tebe' as const, since: null, extra: null, idle: true }
+
+  it('waits on the run, not on her, where the turn is over and the checks are going', () => {
+    expect(waitingOn(idle, change({ checks: 'CI běží' }))).toBe('čeká na CI')
+  })
+
+  it('keeps ringing where the session asked something, whatever the run does', () => {
+    const asking = { word: 'čeká na tebe' as const, since: null, extra: null }
+    expect(waitingOn(asking, change({ checks: 'CI běží' }))).toBe('čeká na tebe')
+  })
+
+  it('is hers again once the run goes red', () => {
+    expect(waitingOn(idle, change({ checks: 'CI červené' }))).toBe('čeká na tebe')
+  })
+
+  it('is hers where there is no change at all', () => {
+    expect(waitingOn(idle, null)).toBe('čeká na tebe')
+  })
+
+  it('leaves a session that is working alone', () => {
+    const working = { word: 'pracuje' as const, since: null, extra: null }
+    expect(waitingOn(working, change({ checks: 'CI běží' }))).toBe('pracuje')
+  })
+
+  it('says nothing where the session said nothing', () => {
+    expect(
+      waitingOn({ word: null, since: null, extra: null }, change({ checks: 'CI běží' }))
+    ).toBeNull()
+  })
+})
+
+describe('LANES', () => {
+  it('gives the CI wait a lane of its own, under everything that is still hers', () => {
+    const words = LANES.map((lane) => lane.word)
+    expect(words).toContain('čeká na CI')
+    expect(words.indexOf('čeká na CI')).toBeGreaterThan(words.indexOf('čeká na tebe'))
+    expect(words.at(-1)).toBeNull()
   })
 })

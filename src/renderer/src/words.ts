@@ -37,5 +37,8 @@ export const LANES: { word: ActivityWord | null; title: string }[] = [
   { word: 'úloha čeká', title: 'úloha čeká' },
   { word: 'gate běží', title: 'gate běží' },
   { word: 'gate ve frontě', title: 'gate ve frontě' },
+  // Last of the lanes that say something: a run on somebody else's machine is the one wait that is
+  // nobody's to answer, and it belongs under everything that is still hers.
+  { word: 'čeká na CI', title: 'čeká na CI' },
   { word: null, title: 'ostatní' }
 ]
