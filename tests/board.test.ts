@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { waitingOn } from '../src/main/board'
 import { checksOf } from '../src/main/forge'
 import { openSession } from '../src/main/records'
-import { burnOf, burnVerdict, doubtsOf, repoColour, stateLabel } from '../src/shared/words'
+import { burnOf, burnVerdict, doubtsOf, repoColour, stateLabel, usageRows } from '../src/shared/words'
 import { inLane, LANES } from '../src/renderer/src/words'
 import type { Change, Session, UsageWindow } from '../src/shared/types'
 
@@ -168,6 +168,51 @@ describe('doubtsOf', () => {
 
   it('says whose the number is even where it is otherwise current', () => {
     expect(doubtsOf(window({ otherAccount: 'a@b.cz · Jiná' }))).toEqual(['účet a@b.cz · Jiná'])
+  })
+})
+
+describe('usageRows', () => {
+  function window(over: Partial<UsageWindow> = {}): UsageWindow {
+    return {
+      key: 'five_hour',
+      label: '5 hodin',
+      short: '5 h',
+      used: 42,
+      resets: 0,
+      left: 3600,
+      pace: null,
+      burn: 7200,
+      stale: null,
+      error: null,
+      otherAccount: null,
+      ...over
+    }
+  }
+
+  it('gives one row per window and none of its own where nothing is doubted', () => {
+    const rows = usageRows([window(), window({ key: 'seven_day', short: '7 d' })])
+    expect(rows.map((row) => row.label)).toEqual([
+      '5 h 42 % · spálíš za 2 h 0 min · reset za 1 h 0 min',
+      '7 d 42 % · spálíš za 2 h 0 min · reset za 1 h 0 min'
+    ])
+    expect(rows.every((row) => row.window !== null)).toBe(true)
+  })
+
+  it('says the doubt once under both windows, not on each of them', () => {
+    const doubt = { otherAccount: 'a@b.cz · Jiná' }
+    const rows = usageRows([window(doubt), window({ ...doubt, key: 'seven_day', short: '7 d' })])
+    expect(rows).toHaveLength(3)
+    expect(rows.filter((row) => row.label.includes('a@b.cz'))).toHaveLength(1)
+    expect(rows.at(-1)).toEqual({ label: 'účet a@b.cz · Jiná', window: null })
+  })
+
+  it('keeps the reset on a doubted window and drops what it burns', () => {
+    const [row] = usageRows([window({ stale: 40 * 60 })])
+    expect(row.label).toBe('5 h 42 % · reset za 1 h 0 min')
+  })
+
+  it('has nothing to show without a window', () => {
+    expect(usageRows([])).toEqual([])
   })
 })
 
