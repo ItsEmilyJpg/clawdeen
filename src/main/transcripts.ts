@@ -251,12 +251,27 @@ async function lastOf(path: string): Promise<string> {
  * What a monitor is watching, read off the call that started it: the description and the command
  * both tend to name an issue, and that number is the whole point of the row saying it waits.
  */
-export async function watchedFor(path: string): Promise<string | null> {
+export interface Watched {
+  /** What it is watching: a run, an issue, or something this cannot name. */
+  kind: 'ci' | 'issue' | 'other'
+  /** The number it names, where it names one. */
+  about: string | null
+}
+
+export async function watchedFor(path: string): Promise<Watched | null> {
   const lines = (await tail(path)).split('\n')
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (!lines[index].includes('"name":"Monitor"')) continue
-    const found = /#(\d{1,6})/.exec(lines[index])
-    return found ? `#${found[1]}` : null
+    const line = lines[index]
+    if (!line.includes('"name":"Monitor"')) continue
+    const found = /#(\d{1,6})/.exec(line)
+    // What a monitor watches is in the command it was given: a run has checks in it, an issue is
+    // asked for by name.
+    const kind = /checks|statusCheck|\bCI\b|workflow run/i.test(line)
+      ? 'ci'
+      : /issue (view|list)|--json state/i.test(line)
+        ? 'issue'
+        : 'other'
+    return { kind, about: found ? `#${found[1]}` : null }
   }
   return null
 }

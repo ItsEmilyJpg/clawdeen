@@ -22,7 +22,8 @@
     "icons": "electron tools/icons",
     "test": "vitest run",
     "hook:install": "node tools/hook/install.mjs",
-    "hook:remove": "node tools/hook/install.mjs --remove"
+    "hook:remove": "node tools/hook/install.mjs --remove",
+    "check": "npm run typecheck && npm run lint && npm test && node tools/gate/stamp.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

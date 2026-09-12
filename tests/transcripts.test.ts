@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, appendFileSy
 import { tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 
-import { lastTurn, pendingWork } from '../src/main/transcripts'
+import { lastTurn, pendingWork, watchedFor } from '../src/main/transcripts'
 
 const rubbish: string[] = []
 
@@ -164,5 +164,31 @@ describe('pendingWork lets go of a task that died', () => {
     withTasks('seven', 'bold12345', 3 * 3600)
     const path = transcript([said('user', backgrounded('seven', 'bold12345'))])
     expect(await pendingWork('seven', path)).toBeNull()
+  })
+})
+
+describe('watchedFor names what a monitor watches', () => {
+  const monitor = (command: string): unknown => ({
+    type: 'assistant',
+    message: {
+      role: 'assistant',
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', name: 'Monitor', input: { command } }]
+    }
+  })
+
+  it('reads a run from the checks it asks about', async () => {
+    const path = transcript([monitor('gh pr checks 858 --json state  # CI na PR #858')])
+    expect(await watchedFor(path)).toEqual({ kind: 'ci', about: '#858' })
+  })
+
+  it('reads an issue from the call that asks for it', async () => {
+    const path = transcript([monitor('gh issue view 835 --json state  # čeká na #835')])
+    expect(await watchedFor(path)).toEqual({ kind: 'issue', about: '#835' })
+  })
+
+  it('says nothing about a watcher pointed at something else', async () => {
+    const path = transcript([monitor('while true; do sleep 60; done')])
+    expect(await watchedFor(path)).toEqual({ kind: 'other', about: null })
   })
 })
