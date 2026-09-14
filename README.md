@@ -1,13 +1,33 @@
-# Clawdeen
+<div align="center">
 
-A board of the Claude Code sessions on this Mac: what each one is doing, where its pull request
-stands, and what is left of the usage windows. It lives in the menu bar, notifies when a session
-starts waiting for an answer, and opens any of them in the Claude app with one click.
+<img src="docs/banner.png" alt="Clawdeen" width="820">
+
+**What each session is doing, where its pull request stands, and what is left of the usage windows.**
+
+It lives in the menu bar, notifies when a session starts waiting for an answer,
+and opens any of them in the Claude app with one click.
+
+[What it reads](#what-it-reads) ·
+[The words a row can say](#the-words-a-row-can-say) ·
+[Configuration](#configuration) ·
+[What you need](#what-you-need) ·
+[Running it](#running-it)
+
+![macOS](https://img.shields.io/badge/macOS-Apple_silicon-2b3644)
+![Electron](https://img.shields.io/badge/Electron-39-4a5964)
+![Vue](https://img.shields.io/badge/Vue-3.5-64c39a)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-5f8fd8)
+![Licence](https://img.shields.io/badge/licence-MIT-8b98a4)
+
+<img src="docs/board.png" alt="The board, its cards in lanes by what each session is doing" width="880">
+
+</div>
 
 ## What it reads
 
-Everything is local. Nothing is sent anywhere, and the only network calls are the ones `gh` and
-`glab` make for pull requests.
+Everything is read locally and nothing about a session leaves the machine. Three calls go out at
+all: the ones `gh` and `glab` make for pull requests, and one to `api.anthropic.com` for the usage
+windows, which sends a token and asks for two percentages.
 
 | Source                                                                             | For                                                                                                                                                                                                                                 |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,25 +49,28 @@ says so on every start.
 
 ## The words a row can say
 
-**What the session is doing:** `pracuje`, `gate běží`, `gate ve frontě`, `úloha běží`,
-`úloha čeká` (a monitor, or a backgrounded command that has written nothing for five minutes),
-`čeká na tebe`. **Where its change stands:** `bez PR`, `koncept`, `konflikt`, `CI běží`,
-`CI červené`, `změny žádané`, `k mergi`, `k review`, `merged`, `zavřené`. A red CI also names the
-job that failed and links to it.
+The board speaks English or Czech, whichever the Mac is in, and the language is a choice in the
+settings that outlives the window. The words below are the English ones.
+
+**What the session is doing:** `working`, `gate running`, `gate queued`, `task running`,
+`task queued` (a monitor, or a backgrounded command that has written nothing for five minutes),
+`waiting for you`. **Where its change stands:** `no PR`, `draft`, `conflict`, `CI running`,
+`CI red`, `changes requested`, `ready to merge`, `in review`, `merged`, `closed`. A red CI also
+names the job that failed and links to it.
 
 A session waiting on an answer is sorted to the top, its dot turns amber, and the tray counts it.
 While a set of checks is running the word carries how many are done and how long it has been going;
 once the run is over it says how long ago it finished.
 
 The gauges say how long each usage window lasts at the pace so far, against the reset it is measured
-by: `spálíš za 1 h 49 min · reset za 4 h 25 min`, both of them in the bar at the top as well as in
+by: `spent in 1 h 49 min · resets in 4 h 25 min`, both of them in the bar at the top as well as in
 the gauges. The numbers and the bar are green while the window outlives its reset, amber within a
 tenth of it, red when it runs out first.
 
 What Claude pins is pinned here, marked with an accent down the side of the card. The session open
 in the Claude app is ringed in the same colour, read off the record the app stamps when a card is
 focused, which says which session is open rather than whether she is looking at it. Cards can be
-dragged into any order, which is then hers until the `vlastní pořadí ×` chip gives it back. The
+dragged into any order, which is then hers until the `own order ×` chip gives it back. The
 strip under the gauges says what the day went into, summed across every session.
 
 **Which project a card is on** is a stripe down its right edge, in a colour the repository's name
@@ -63,23 +86,59 @@ it.
 
 ## Configuration
 
-Both files are optional and live outside this repository, because what they point at is not
-everyone's.
+These files are optional and live outside this repository, because what they point at is not
+everyone's. They live in `~/.config/clawdeen/`, and an install made before the board was called
+Clawdeen is read from `~/.config/claude-sessions/` where that directory is the one that exists.
 
-`~/.config/claude-sessions/gates.json` — where a long local check registers itself. The lock is
-taken before the wait for a free slot and the registry only after it, which is how `gate běží` and
-`gate ve frontě` are told apart.
+`~/.config/clawdeen/gates.json` — where a long local check registers itself. The lock is taken
+before the wait for a free slot and the registry only after it, which is how `gate running` and
+`gate queued` are told apart.
 
 ```json
 { "registry": "${TMPDIR}/clawdeen-gates", "lock": "var/check.lock" }
 ```
 
-`~/.config/claude-sessions/jira.json` — tracker key to base URL, for sessions whose work is not on
+`~/.config/clawdeen/jira.json` — tracker key to base URL, for sessions whose work is not on
 GitHub.
 
 ```json
 { "ABC": "https://example.atlassian.net/browse/" }
 ```
+
+`~/.config/clawdeen/private-names.json` — words that must never reach a commit. `npm run check`
+refuses a tree carrying one of them, and proves every pattern against its own canary first, because
+a regex that stopped matching reads exactly like a repository with nothing to hide. The list is kept
+out here rather than in the repository for the obvious reason: a gate that forbids a word has to
+spell that word out, and a list committed here would publish what it was built to keep back.
+`tools/gate/private-names.example.json` shows the shape. Without the file the check says so plainly
+and passes, rather than reading as a clean tree.
+
+```json
+[{ "name": "employer", "pattern": "examplecorp", "flags": "i", "canary": "ExampleCorp" }]
+```
+
+## What you need
+
+macOS, and Node 22 or newer to build it. The board reads what Claude Code and the Claude desktop
+app already write, so there is nothing to set up before the first row appears.
+
+`gh`, signed in, is what fills the pull request column, and `glab` does the same for GitLab. With
+neither, a row still says what its session is doing and leaves the change blank, which is the honest
+answer rather than a guessed one.
+
+## Live state from the hooks
+
+Reading the transcripts says what a session was doing a moment ago. A hook says it as it happens,
+and the board asks for one from its own tray menu, because whoever downloads a build has no checkout
+to run a script from. From a checkout:
+
+```bash
+npm run hook:install   # adds the hook to ~/.claude/settings.json, keeping what was there beside it
+npm run hook:remove    # takes it out again
+```
+
+Nothing breaks without it. The hook posts to a loopback port with a token written next to the other
+configuration, and reading the files stays the fallback for everything the board does not hear.
 
 ## Running it
 
@@ -96,7 +155,11 @@ The build is not signed or notarised, so the first launch is a right click and *
 ## What it does not know
 
 The desktop app keeps a pending permission prompt in memory only, so a session held up by one reads
-as `pracuje` rather than as waiting. A question asked with `AskUserQuestion` or a plan waiting for
+as `working` rather than as waiting. A question asked with `AskUserQuestion` or a plan waiting for
 approval is read correctly, because those reach the transcript.
 
 The record format is undocumented and was read off the app; a Claude update can change it.
+
+## Licence
+
+MIT, in `LICENSE`.

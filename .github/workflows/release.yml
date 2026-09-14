@@ -1,0 +1,43 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build:mac
+
+      # ditto rather than zip: it keeps the bundle's symlinks and metadata, and an .app that lost
+      # those is an .app that will not open.
+      - name: Pack the application
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/mac-arm64/Clawdeen.app" "dist/Clawdeen-${version}-arm64.zip"
+
+      # The build is unsigned and not notarised, because notarising asks for a developer account
+      # this project does not have. Said here so nobody downloads it and wonders why it will not open.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Clawdeen ${version}" \
+            --notes "An Apple silicon build, unsigned and not notarised. macOS refuses it on a double click: open it once with a right click and **Open**, and it starts normally after that. The README says what it reads and what it keeps." \
+            "dist/Clawdeen-${version}-arm64.zip"

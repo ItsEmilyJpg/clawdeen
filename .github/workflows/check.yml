@@ -1,0 +1,38 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The application is macOS only and `postinstall` rebuilds native dependencies for the platform it
+# runs on, so there is nothing a Linux runner could prove that would still be true here.
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The forbidden words live outside the repository, for the reason the gate's own comment
+      # gives. Without the secret the gate says it is guarding nothing and passes, which is what it
+      # does on a fresh clone; with it, CI refuses a branch carrying a name that must not go public.
+      - name: Write the private-names list, where one is configured
+        env:
+          PRIVATE_NAMES: ${{ secrets.PRIVATE_NAMES }}
+        run: |
+          if [ -n "$PRIVATE_NAMES" ]; then
+            mkdir -p ~/.config/clawdeen
+            printf '%s' "$PRIVATE_NAMES" > ~/.config/clawdeen/private-names.json
+            echo "list written, the gate will check against it"
+          else
+            echo "no PRIVATE_NAMES secret, so the gate will say it is guarding nothing"
+          fi
+
+      - run: npm run check

@@ -3,12 +3,22 @@
 //
 // The script itself is copied next to the other configuration rather than run from the checkout:
 // the settings should not break when this repository is moved or a branch is checked out.
+import { existsSync } from 'node:fs'
 import { copyFile, chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 const SETTINGS = join(homedir(), '.claude', 'settings.json')
-const INSTALLED = join(homedir(), '.config', 'claude-sessions', 'board-event.sh')
+// The same choice src/main/paths.ts makes, because this script runs without the application: the
+// directory is named after what the application is called now, and an older install stays put.
+function configDir() {
+  const named = join(homedir(), '.config', 'clawdeen')
+  const before = join(homedir(), '.config', 'claude-sessions')
+  if (existsSync(named) || !existsSync(before)) return named
+  return before
+}
+
+const INSTALLED = join(configDir(), 'board-event.sh')
 const SOURCE = join(import.meta.dirname, 'board-event.sh')
 // PreToolUse is the chatty one and it is here on purpose: it is the only thing that says a session
 // is working right now, and a turn can go minutes between the events that bracket it.

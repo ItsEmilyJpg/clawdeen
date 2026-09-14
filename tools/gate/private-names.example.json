@@ -1,0 +1,38 @@
+[
+  {
+    "name": "other project",
+    "pattern": "acme-internal",
+    "flags": "i",
+    "canary": "Acme-Internal"
+  },
+  {
+    "name": "employer",
+    "pattern": "examplecorp",
+    "flags": "i",
+    "canary": "ExampleCorp"
+  },
+  {
+    "name": "tracker key",
+    "pattern": "\\bABC-\\d+",
+    "flags": "i",
+    "canary": "ABC-1234"
+  },
+  {
+    "name": "private host",
+    "pattern": "[\\w-]+\\.example\\.test",
+    "flags": "i",
+    "canary": "api.example.test"
+  },
+  {
+    "name": "personal mailbox",
+    "pattern": "someone@example\\.com",
+    "flags": "i",
+    "canary": "someone@example.com"
+  },
+  {
+    "name": "home directory",
+    "pattern": "/Users/someone\\b",
+    "flags": "",
+    "canary": "/Users/someone/dev"
+  }
+]
