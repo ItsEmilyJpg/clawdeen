@@ -1,4 +1,5 @@
 import { decimal, say, setLocale, stateWord, toolCount } from '../../shared/i18n'
+import { byProject } from '../../shared/projects'
 import type { ActivityWord, Change, Session, StateWord } from '../../shared/types'
 
 export { decimal, say, setLocale, stateWord, toolCount }
@@ -8,6 +9,7 @@ export {
   clock,
   doubtsOf,
   inWords,
+  refreshVerdict,
   repoColour,
   stateLabel
 } from '../../shared/words'
@@ -80,19 +82,25 @@ export function laneRows(): { word: ActivityWord | null; title: string }[] {
 /**
  * A lane holds still. The list sorts by what moved last, which is right there and wrong here: a
  * card that jumps up because its session typed one more line is a card she has to find again. What
- * she dragged and what she pinned still comes first; the rest stands by how long it has been in
- * the state the lane is named after, longest first, which only moves when the state itself does.
+ * she dragged and what she pinned still comes first, and after them the repositories in the order
+ * she put them in the settings; the rest stands by how long it has been in the state the lane is
+ * named after, longest first, which only moves when the state itself does.
  * The last lane has no state under it, so it falls back to what moved last: a session doing
  * nothing does not move either.
  */
-export function inLane(order: string[]): (one: Session, other: Session) => number {
+export function inLane(
+  order: string[],
+  projects: string[] = []
+): (one: Session, other: Session) => number {
   const placed = (session: Session): number => {
     const at = order.indexOf(session.id)
     return at === -1 ? Number.MAX_SAFE_INTEGER : at
   }
+  const repo = byProject(projects)
   return (one, other) =>
     placed(one) - placed(other) ||
     Number(!one.pinned) - Number(!other.pinned) ||
+    repo(one.project, other.project) ||
     (one.entered ?? Number.MAX_SAFE_INTEGER) - (other.entered ?? Number.MAX_SAFE_INTEGER) ||
     other.last - one.last
 }

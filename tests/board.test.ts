@@ -7,6 +7,7 @@ import {
   burnOf,
   burnVerdict,
   doubtsOf,
+  refreshVerdict,
   repoColour,
   stateLabel,
   usageRows
@@ -120,6 +121,30 @@ describe('burnOf', () => {
 
   it('has nothing to say at the very start of a window', () => {
     expect(burnOf(5, fiveHours * 60, fiveHours)).toBeNull()
+  })
+})
+
+describe('refreshVerdict', () => {
+  const at = 1789219700
+
+  it('is green while the board is still being swept', () => {
+    expect(refreshVerdict(at, at + 14)).toBe('ok')
+    expect(refreshVerdict(at, at + 45)).toBe('ok')
+  })
+
+  it('is amber once a sweep has gone missing', () => {
+    expect(refreshVerdict(at, at + 46)).toBe('warn')
+    expect(refreshVerdict(at, at + 90)).toBe('warn')
+  })
+
+  /** The one that earns the colour: a window nobody is refreshing still prints a plausible time. */
+  it('is red once nothing is reading the board any more', () => {
+    expect(refreshVerdict(at, at + 91)).toBe('danger')
+    expect(refreshVerdict(at, at + 3600)).toBe('danger')
+  })
+
+  it('is green on a board read this instant', () => {
+    expect(refreshVerdict(at, at)).toBe('ok')
   })
 })
 
@@ -354,6 +379,34 @@ describe('inLane', () => {
       'held',
       'oldest'
     ])
+  })
+
+  it('groups a lane by the repositories in the order she arranged them', () => {
+    const first = session({ id: 'first', project: 'website', entered: 1789219900 })
+    const second = session({ id: 'second', project: 'clawdeen', entered: 1789210000 })
+    const third = session({ id: 'third', project: 'clawdeen', entered: 1789219000 })
+    const rows = [second, third, first]
+    expect(rows.sort(inLane([], ['website', 'clawdeen'])).map((one) => one.id)).toEqual([
+      'first',
+      'second',
+      'third'
+    ])
+  })
+
+  /** The order she arranged is hers, but a card she pinned is one she said to keep on top. */
+  it('keeps a pinned card above the repository order', () => {
+    const pinned = session({ id: 'pinned', project: 'clawdeen', pinned: true })
+    const first = session({ id: 'first', project: 'website' })
+    expect([first, pinned].sort(inLane([], ['website', 'clawdeen'])).map((one) => one.id)).toEqual([
+      'pinned',
+      'first'
+    ])
+  })
+
+  it('sorts as it always did while she has arranged no repositories', () => {
+    const older = session({ id: 'older', project: 'website', entered: 1789210000 })
+    const newer = session({ id: 'newer', project: 'clawdeen', entered: 1789219000 })
+    expect([newer, older].sort(inLane([], [])).map((one) => one.id)).toEqual(['older', 'newer'])
   })
 
   it('falls back to what moved last where no state stands behind the card', () => {

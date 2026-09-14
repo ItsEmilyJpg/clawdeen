@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
 import { everyStateWord, locale, say } from '../shared/i18n'
+import { ordered } from '../shared/projects'
 import { settings } from './settings'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
@@ -361,7 +362,9 @@ export async function board(): Promise<Board> {
   // Every repository the window holds, named once and sorted, so the settings can list them without
   // taking a label apart. The sessions themselves are handed over whole: hiding one is the window's
   // business, and the tray counts what the board knows rather than what it draws.
-  const projects = [...new Set(sessions.map((session) => session.project).filter(Boolean))].sort()
+  const seen = [...new Set(sessions.map((session) => session.project).filter(Boolean))].sort()
+  const projectOrder = settings().projectOrder
+  const projects = ordered(seen, projectOrder)
   return {
     sessions,
     usage: await usage(now),
@@ -370,6 +373,7 @@ export async function board(): Promise<Board> {
     at: now,
     locale: locale(),
     projects,
+    projectOrder,
     hidden: settings().hidden
   }
 }

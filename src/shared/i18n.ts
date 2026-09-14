@@ -261,6 +261,10 @@ interface Phrases {
   usageStatus: string
   usageEmpty: string
   groupProjects: string
+  dragProjects: string
+  pulseLive: string
+  pulseSlow: string
+  pulseDead: string
   hiddenCount: string
   hiddenWaiting: string
   showingAll: string
@@ -396,6 +400,10 @@ const PHRASES: Record<Locale, Phrases> = {
     usageStatus: 'usage answered {n}',
     usageEmpty: 'usage returned no window',
     groupProjects: 'Projects',
+    dragProjects: 'Click to switch a repository off, drag to put it where you want it',
+    pulseLive: 'read {n} ago, still being read',
+    pulseSlow: 'read {n} ago, a sweep has been missed',
+    pulseDead: 'read {n} ago and not since: what stands here is old',
     hiddenCount: '{n} hidden',
     hiddenWaiting: '{n} waiting',
     showingAll: 'showing all'
@@ -529,6 +537,10 @@ const PHRASES: Record<Locale, Phrases> = {
     usageStatus: 'usage odpovědělo {n}',
     usageEmpty: 'usage nevrátilo žádné okno',
     groupProjects: 'Projekty',
+    dragProjects: 'Kliknutím repozitář vypneš, přetažením ho přesuneš',
+    pulseLive: 'načteno před {n}, čte se dál',
+    pulseSlow: 'načteno před {n}, jedno čtení vypadlo',
+    pulseDead: 'načteno před {n} a od té doby ne: co je tu vidět, je staré',
     hiddenCount: 'skrytých {n}',
     hiddenWaiting: '{n} čeká',
     showingAll: 'zobrazeno vše'

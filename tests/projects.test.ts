@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { hiddenTally, visible, withProject } from '../src/shared/projects'
+import {
+  byProject,
+  hiddenTally,
+  movedProject,
+  ordered,
+  visible,
+  withProject
+} from '../src/shared/projects'
 import type { Session } from '../src/shared/types'
 
 function session(over: Partial<Session> = {}): Session {
@@ -94,5 +101,76 @@ describe('withProject', () => {
 
   it('switching off what is already off changes nothing', () => {
     expect(withProject(['notes'], 'notes', false)).toEqual(['notes'])
+  })
+})
+
+describe('ordered', () => {
+  const seen = ['clawdeen', 'notes', 'website']
+
+  it('leaves the alphabet alone while she has arranged nothing', () => {
+    expect(ordered(seen, [])).toEqual(seen)
+  })
+
+  it('reads them back in the order she dragged them into', () => {
+    expect(ordered(seen, ['website', 'clawdeen', 'notes'])).toEqual([
+      'website',
+      'clawdeen',
+      'notes'
+    ])
+  })
+
+  /**
+   * The one that decides whether a stored order may exist at all. A repository opened for the first
+   * time has never been dragged anywhere, and putting it in the middle would move a list she
+   * arranged herself. It goes behind what she arranged, alphabetically among its own kind.
+   */
+  it('puts a repository she has never moved behind the ones she has', () => {
+    expect(ordered(['clawdeen', 'fresh', 'notes'], ['notes', 'clawdeen'])).toEqual([
+      'notes',
+      'clawdeen',
+      'fresh'
+    ])
+  })
+
+  it('ignores a name no session carries any more', () => {
+    expect(ordered(['clawdeen'], ['gone', 'clawdeen'])).toEqual(['clawdeen'])
+  })
+})
+
+describe('movedProject', () => {
+  const seen = ['clawdeen', 'notes', 'website']
+
+  it('moves one up', () => {
+    expect(movedProject(seen, 'website', 'clawdeen')).toEqual(['website', 'clawdeen', 'notes'])
+  })
+
+  it('moves one down', () => {
+    expect(movedProject(seen, 'clawdeen', 'website')).toEqual(['notes', 'website', 'clawdeen'])
+  })
+
+  it('dropping one onto itself changes nothing', () => {
+    expect(movedProject(seen, 'notes', 'notes')).toBe(seen)
+  })
+
+  it('a name that is not there changes nothing', () => {
+    expect(movedProject(seen, 'gone', 'notes')).toBe(seen)
+  })
+})
+
+describe('byProject', () => {
+  it('says nothing while she has arranged nothing, so a lane sorts as it always did', () => {
+    const flat = byProject([])
+    expect(flat('notes', 'clawdeen')).toBe(0)
+  })
+
+  it('sorts by where she put the repository', () => {
+    const order = byProject(['website', 'clawdeen'])
+    expect(['clawdeen', 'website'].sort(order)).toEqual(['website', 'clawdeen'])
+  })
+
+  it('leaves a repository she never moved behind the ones she did', () => {
+    const order = byProject(['website'])
+    expect(order('fresh', 'website')).toBeGreaterThan(0)
+    expect(order('fresh', 'other')).toBe(0)
   })
 })
