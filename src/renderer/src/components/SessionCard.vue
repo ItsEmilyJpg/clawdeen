@@ -20,17 +20,22 @@ const props = defineProps<{
   /** Whether the session open in the app is marked at all; off until she asks for it in the menu. */
   markFocus: boolean
   laned?: boolean
+  /**
+   * Whether this row's menu is open. The board holds it, not the row: a sweep reorders the list
+   * every time any session on the machine writes a line, and a row that moves between lanes is
+   * unmounted and built again. Both used to take the menu with them, measured inside a second.
+   */
+  acting: boolean
 }>()
 const emit = defineEmits<{
   grab: []
   drop: []
   peek: []
   detail: [spot: { left: number; top: number }]
+  acts: []
 }>()
 
 const APP_SESSION = 'claude://code/continue?session='
-/** Whether this row's menu is open. One row's menu at a time, because a click closes every other. */
-const acting = ref(false)
 
 /**
  * The two controls used to sit on every row as two buttons, and the width they reserved was taken
@@ -38,15 +43,10 @@ const acting = ref(false)
  * what they were is in the menu behind it.
  */
 function act(what: 'detail' | 'chat', event: MouseEvent): void {
-  acting.value = false
   if (what === 'chat') return emit('peek')
   expand(event)
 }
 
-/** A menu open on a row that is being redrawn under her is a menu on the wrong row. */
-function shut(): void {
-  acting.value = false
-}
 const FAILED_SHOWN = 3
 const TOO_LONG = 600
 /** How much of a call fits beside the rest of a row before it pushes everything else off it. */
@@ -106,12 +106,15 @@ const standing = computed(() => {
   // the chip is kept only where it carries something the lane cannot: how long, or what it waits on.
   if (session.activity) {
     const about = session.about ? ` · ${session.about}` : ''
-    // How long says something about a task, and nothing at all about how long she has been the one
-    // holding it up, so it only rides with the task states.
-    const timed = session.since && session.activity !== 'waiting-for-you'
-    const on = timed ? ` · ${inWords(Date.now() / 1000 - (session.since as number))}` : ''
-    // A task that has been on for longer than this is not progress any more, it is a thing to look at.
-    const hot = timed && Date.now() / 1000 - (session.since as number) > TOO_LONG ? ' hot' : ''
+    // How long rides with every state that has a beginning, a wait on her included: a row that has
+    // been standing there since breakfast says something a row that has just stopped does not.
+    const timed = session.since !== null
+    const waited = timed ? Date.now() / 1000 - (session.since as number) : 0
+    const on = timed ? ` · ${inWords(waited)}` : ''
+    // A task that has been on for longer than this is not progress any more, it is a thing to look
+    // at. A wait on her is not: it is hers to end whenever she gets to it, and a row that turns on
+    // her for being slow is a row she stops reading.
+    const hot = timed && session.activity !== 'waiting-for-you' && waited > TOO_LONG ? ' hot' : ''
     const word = stateWord(session.activity)
     const label = word + about + on
     if (!props.laned || label !== word) {
@@ -249,8 +252,8 @@ function open(url: string): void {
       </div>
       <div class="meta">{{ session.place }} · {{ ago(session.last) }}</div>
     </div>
-    <div class="acts" @mouseleave="shut()">
-      <button class="act dots" :title="say('cardActions')" @click.stop="acting = !acting">⋮</button>
+    <div class="acts">
+      <button class="act dots" :title="say('cardActions')" @click.stop="emit('acts')">⋮</button>
       <div v-if="acting" class="actions">
         <button class="action" :title="say('cardDetail')" @click.stop="act('detail', $event)">
           {{ say('actionDetail') }}
@@ -514,7 +517,10 @@ function open(url: string): void {
   color: var(--accent);
 }
 
+/* An open menu is the third way of being there: the sweep moves the row out from under the cursor,
+   and a menu that only hover keeps lit goes invisible where it still is. */
 .card:hover .acts,
+.card.acting .acts,
 .acts:focus-within {
   opacity: 1;
 }
