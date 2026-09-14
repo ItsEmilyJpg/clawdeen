@@ -1,16 +1,34 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
-import type { Board, ProjectMark, Session, StateWord, ThemeMode } from '../../shared/types'
+import type { Board, Locale, ProjectMark, Session, StateWord, ThemeMode } from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
 import SessionDetail from './components/SessionDetail.vue'
 import UsageBar from './components/UsageBar.vue'
-import { clock, inLane, inWords, LANES, STATE_CLASS, STATE_ORDER } from './words'
+import {
+  clock,
+  inLane,
+  inWords,
+  LANE_WORDS,
+  laneRows,
+  say,
+  setLocale,
+  stateWord,
+  STATE_CLASS,
+  STATE_ORDER
+} from './words'
 
 type Filter = StateWord | 'pinned' | ''
 
-const board = ref<Board>({ sessions: [], usage: [], order: [], today: [], at: 0 })
+const board = ref<Board>({
+  sessions: [],
+  usage: [],
+  order: [],
+  today: [],
+  at: 0,
+  locale: 'en'
+})
 const filter = ref<Filter>('')
 const search = ref('')
 const dragged = ref<string | null>(null)
@@ -22,33 +40,38 @@ const field = ref<HTMLInputElement | null>(null)
 const ticking = ref(remembered('ticking') === '1')
 /** One rule for the whole board: compact by default, everything spelled out when expanded. */
 const expanded = ref(remembered('expanded') === '1')
-/** Two ways to read the same board: the order she arranged, or the workflow the states make. */
-const workflow = ref(remembered('workflow') === '1')
+/**
+ * Two ways to read the same board: the order she arranged, or the workflow the states make. The
+ * workflow is the default, so an unopened board already answers what is waiting and what is not.
+ */
+const workflow = ref(remembered('workflow') !== '0')
 /**
  * Whether the card of the session open in the app is outlined. Off unless she has asked for it:
  * the app writes its focus one to three and a half seconds after the click, so the outline sits on
  * the wrong card for that long, and a mark that is wrong some of the time is worse than none.
  */
 const markFocus = ref(remembered('markFocus') === '1')
-const PROJECT_MARKS: { value: ProjectMark; label: string }[] = [
-  { value: 'stripe', label: 'barevný proužek' },
-  { value: 'name', label: 'jméno repozitáře' },
-  { value: 'none', label: 'nic' }
-]
+const MARK_VALUES: ProjectMark[] = ['stripe', 'name', 'none']
+const MARK_KEYS = { stripe: 'choiceStripe', name: 'choiceRepoName', none: 'choiceNothing' } as const
+// Read rather than stored, because the language can change under a window that is already open.
+const projectMarks = computed(() =>
+  MARK_VALUES.map((value) => ({ value, label: say(MARK_KEYS[value]) }))
+)
 
 function projectMark(kept: string | null): ProjectMark {
-  return PROJECT_MARKS.some((mark) => mark.value === kept) ? (kept as ProjectMark) : 'stripe'
+  // The name rather than the stripe: a colour has to be learned, a name is read straight off.
+  return MARK_VALUES.some((value) => value === kept) ? (kept as ProjectMark) : 'name'
 }
 
 const project = ref<ProjectMark>(projectMark(remembered('project')))
-const THEMES: { value: ThemeMode; label: string }[] = [
-  { value: 'system', label: 'podle systému' },
-  { value: 'light', label: 'světlý' },
-  { value: 'dark', label: 'tmavý' }
-]
+const THEME_VALUES: ThemeMode[] = ['system', 'light', 'dark']
+const THEME_KEYS = { system: 'choiceSystem', light: 'choiceLight', dark: 'choiceDark' } as const
+const themes = computed(() =>
+  THEME_VALUES.map((value) => ({ value, label: say(THEME_KEYS[value]) }))
+)
 
 function themeMode(kept: string | null): ThemeMode {
-  return THEMES.some((mode) => mode.value === kept) ? (kept as ThemeMode) : 'system'
+  return THEME_VALUES.some((value) => value === kept) ? (kept as ThemeMode) : 'system'
 }
 
 const theme = ref<ThemeMode>(themeMode(remembered('theme')))
@@ -83,7 +106,7 @@ function keepWord(key: string, value: string): void {
 }
 
 /** Every word a lane of its own carries, so the last lane knows what is left over. */
-const LANED = new Set(LANES.map((lane) => lane.word).filter(Boolean))
+const LANED = new Set(LANE_WORDS.filter(Boolean))
 
 /**
  * The workflow board, in lanes: what waits on her first, what is only queueing last. The last lane
@@ -91,14 +114,16 @@ const LANED = new Set(LANES.map((lane) => lane.word).filter(Boolean))
  * belongs nowhere took the row off the board entirely.
  */
 const lanes = computed(() =>
-  LANES.map((lane) => ({
-    ...lane,
-    sessions: shown.value
-      .filter((session) =>
-        lane.word ? session.activity === lane.word : !LANED.has(session.activity)
-      )
-      .sort(inLane(board.value.order))
-  })).filter((lane) => lane.sessions.length > 0)
+  laneRows()
+    .map((lane) => ({
+      ...lane,
+      sessions: shown.value
+        .filter((session) =>
+          lane.word ? session.activity === lane.word : !LANED.has(session.activity)
+        )
+        .sort(inLane(board.value.order))
+    }))
+    .filter((lane) => lane.sessions.length > 0)
 )
 
 function wide(): void {
@@ -143,6 +168,14 @@ function wear(mode: ThemeMode): void {
   theme.value = mode
   keepWord('theme', mode)
   paint(mode)
+}
+
+/**
+ * The language is the one choice the page does not keep itself: the tray and the menus are drawn by
+ * the main process in the same language, so it is settled there and comes back with the next board.
+ */
+function speak(next: Locale): void {
+  void window.api.locale(next)
 }
 
 // Before the first paint rather than on mount: a window that starts light and turns dark a frame
@@ -264,8 +297,13 @@ function onKey(event: KeyboardEvent): void {
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
   window.addEventListener('click', outside)
-  board.value = await window.api.board()
+  const first = await window.api.board()
+  // The language comes with the board: the page keeps no settings of its own, and every word it
+  // draws is looked up at render time, so setting it before the assignment is what the view sees.
+  setLocale(first.locale)
+  board.value = first
   stop = window.api.onBoard((next) => {
+    setLocale(next.locale)
     board.value = next
   })
 })
@@ -280,68 +318,111 @@ onUnmounted(() => {
 <template>
   <div class="shell">
     <header class="bar drag">
-      <h1>Claude session</h1>
+      <h1>Clawdeen</h1>
       <UsageBar v-if="!expanded" :windows="board.usage" compact />
       <!-- One group, so a window too narrow for the bar wraps the whole of it rather than
            stranding the cog on a row of its own. -->
       <div class="tools">
-        <button class="stamp" title="Vteřiny" @click="tick(!ticking)">
-          {{ board.at ? `naposledy ${clock(board.at, ticking)}` : 'načítá se' }}
+        <button class="stamp" :title="say('secondsTitle')" @click="tick(!ticking)">
+          {{ board.at ? say('lastAt', clock(board.at, ticking)) : say('loading') }}
         </button>
-        <button class="wider" :title="expanded ? 'Zúžit' : 'Rozšířit'" @click="wide()">
+        <button class="wider" :title="expanded ? say('narrow') : say('widen')" @click="wide()">
           {{ expanded ? '⌃' : '⌄' }}
         </button>
         <div ref="cog" class="settings">
-          <button class="wider" title="Nastavení" @click="openSettings()">⚙</button>
+          <button class="wider" :title="say('settingsTitle')" @click="openSettings()">⚙</button>
           <div
             v-if="settings"
             ref="menu"
             class="menu"
             :style="{ transform: `translateX(${nudge}px)` }"
           >
-            <p class="what">Řazení</p>
-            <button :class="['choice', { on: !workflow }]" @click="orderBy(false)">
-              jak jsi to nechala
-            </button>
-            <button :class="['choice', { on: workflow }]" @click="orderBy(true)">
-              podle stavu
-            </button>
-            <p class="what">Čas</p>
-            <button :class="['choice', { on: !ticking }]" @click="tick(false)">minuty</button>
-            <button :class="['choice', { on: ticking }]" @click="tick(true)">vteřiny</button>
-            <p class="what">Vzhled</p>
-            <button
-              v-for="mode in THEMES"
-              :key="mode.value"
-              :class="['choice', { on: theme === mode.value }]"
-              @click="wear(mode.value)"
-            >
-              {{ mode.label }}
-            </button>
-            <p class="what">Projekt na kartě</p>
-            <button
-              v-for="mark in PROJECT_MARKS"
-              :key="mark.value"
-              :class="['choice', { on: project === mark.value }]"
-              @click="markProject(mark.value)"
-            >
-              {{ mark.label }}
-            </button>
-            <p class="what">Aktivní okno <span class="beta">beta</span></p>
-            <button
-              :class="['choice', { on: markFocus }]"
-              title="Appka svůj focus zapisuje se zpožděním, takže rámeček chvíli sedí na cizí kartě."
-              @click="markFocusing(true)"
-            >
-              zvýraznit
-            </button>
-            <button :class="['choice', { on: !markFocus }]" @click="markFocusing(false)">
-              neoznačovat
-            </button>
-            <p class="what">Vlastní pořadí</p>
-            <button class="choice" :disabled="board.order.length === 0" @click="forget()">
-              {{ board.order.length > 0 ? 'zapomenout' : 'žádné není' }}
-            </button>
+            <p class="head">{{ say('settingsTitle') }}</p>
+
+            <div class="row">
+              <span class="label">{{ say('groupSorting') }}</span>
+              <div class="seg">
+                <button :class="['seg-item', { on: workflow }]" @click="orderBy(true)">
+                  {{ say('orderByState') }}
+                </button>
+                <button :class="['seg-item', { on: !workflow }]" @click="orderBy(false)">
+                  {{ say('orderAsLeft') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="row">
+              <span class="label">{{ say('groupProject') }}</span>
+              <div class="seg">
+                <button
+                  v-for="mark in projectMarks"
+                  :key="mark.value"
+                  :class="['seg-item', { on: project === mark.value }]"
+                  @click="markProject(mark.value)"
+                >
+                  {{ mark.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="row">
+              <span class="label">{{ say('groupAppearance') }}</span>
+              <div class="seg">
+                <button
+                  v-for="mode in themes"
+                  :key="mode.value"
+                  :class="['seg-item', { on: theme === mode.value }]"
+                  @click="wear(mode.value)"
+                >
+                  {{ mode.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="row">
+              <span class="label">{{ say('groupTime') }}</span>
+              <div class="seg">
+                <button :class="['seg-item', { on: !ticking }]" @click="tick(false)">
+                  {{ say('choiceMinutes') }}
+                </button>
+                <button :class="['seg-item', { on: ticking }]" @click="tick(true)">
+                  {{ say('choiceSeconds') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="row">
+              <span class="label">{{ say('groupLanguage') }}</span>
+              <div class="seg">
+                <button :class="['seg-item', { on: board.locale === 'en' }]" @click="speak('en')">
+                  {{ say('langEnglish') }}
+                </button>
+                <button :class="['seg-item', { on: board.locale === 'cs' }]" @click="speak('cs')">
+                  {{ say('langCzech') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="row" :title="say('focusWarning')">
+              <span class="label">
+                {{ say('groupActiveWindow') }} <span class="beta">beta</span>
+              </span>
+              <div class="seg">
+                <button :class="['seg-item', { on: markFocus }]" @click="markFocusing(true)">
+                  {{ say('choiceHighlight') }}
+                </button>
+                <button :class="['seg-item', { on: !markFocus }]" @click="markFocusing(false)">
+                  {{ say('choiceUnmarked') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="row last">
+              <span class="label">{{ say('groupOwnOrder') }}</span>
+              <button class="plain" :disabled="board.order.length === 0" @click="forget()">
+                {{ board.order.length > 0 ? say('forget') : say('noOrder') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -350,19 +431,19 @@ onUnmounted(() => {
     <UsageBar v-if="expanded" :windows="board.usage" />
 
     <p v-if="board.today.length > 0" class="today">
-      <span class="what">dnes</span>
+      <span class="what">{{ say('today') }}</span>
       <span
         v-for="spell in board.today"
         :key="spell.word"
         :class="['chip', STATE_CLASS[spell.word]]"
       >
-        {{ spell.word }} {{ inWords(spell.seconds) }}
+        {{ stateWord(spell.word) }} {{ inWords(spell.seconds) }}
       </span>
     </p>
 
     <nav class="filters">
       <button :class="['chip', { on: filter === '' }]" @click="pick('')">
-        vše <b>{{ board.sessions.length }}</b>
+        {{ say('all') }} <b>{{ board.sessions.length }}</b>
       </button>
       <button
         v-for="row in counts"
@@ -370,19 +451,25 @@ onUnmounted(() => {
         :class="['chip', STATE_CLASS[row.word], { on: filter === row.word }]"
         @click="pick(row.word)"
       >
-        {{ row.word }} <b>{{ row.count }}</b>
+        {{ stateWord(row.word) }} <b>{{ row.count }}</b>
       </button>
       <button
         v-if="pinned > 0"
         :class="['chip', 'pin', { on: filter === 'pinned' }]"
         @click="pick('pinned')"
       >
-        připnuté <b>{{ pinned }}</b>
+        {{ say('pinnedCount') }} <b>{{ pinned }}</b>
       </button>
       <button v-if="board.order.length > 0" class="chip undo" @click="forget()">
-        vlastní pořadí ×
+        {{ say('ownOrderUndo') }}
       </button>
-      <input ref="field" v-model="search" class="search" type="search" placeholder="hledat  ⌘F" />
+      <input
+        ref="field"
+        v-model="search"
+        class="search"
+        type="search"
+        :placeholder="say('searchPlaceholder')"
+      />
     </nav>
 
     <template v-if="workflow">
@@ -404,7 +491,7 @@ onUnmounted(() => {
           />
         </ul>
       </section>
-      <p v-if="lanes.length === 0" class="empty">Nic, co by sedělo.</p>
+      <p v-if="lanes.length === 0" class="empty">{{ say('nothingMatches') }}</p>
     </template>
 
     <ul v-else :class="['sessions', expanded ? 'expanded' : 'compact']">
@@ -420,7 +507,7 @@ onUnmounted(() => {
         @peek="reading = session.id"
         @detail="opened = { id: session.id, ...$event }"
       />
-      <li v-if="shown.length === 0" class="empty">Nic, co by sedělo.</li>
+      <li v-if="shown.length === 0" class="empty">{{ say('nothingMatches') }}</li>
     </ul>
 
     <ChatPane :session="read" @close="reading = null" />
@@ -590,25 +677,44 @@ h1 {
   z-index: 6;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px;
-  min-width: 160px;
+  min-width: 320px;
+  padding: 6px;
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-card);
 }
 
-.menu .what {
-  margin: 0 0 4px;
-  padding: 0 6px;
+.menu .head {
+  margin: 0;
+  padding: 6px 8px 10px;
   color: var(--faint);
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-/* Beside the heading rather than on the choice: it is the whole section that is not finished. */
+/* Label on the left, the control on the right: the eye runs down one column of labels, and a
+   choice is never read as a heading the way it was when both were buttons in one stack. */
+.menu .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 8px;
+}
+
+.menu .row + .row {
+  border-top: 1px solid var(--rule);
+}
+
+.menu .label {
+  color: var(--ink-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Beside the label rather than on a choice: it is the whole setting that is not finished. */
 .menu .beta {
   margin-left: 5px;
   padding: 0 4px;
@@ -619,36 +725,57 @@ h1 {
   letter-spacing: 0.06em;
 }
 
-/* Every section but the first stands off the choices above it, or the menu reads as one long list. */
-.menu .what:not(:first-child) {
-  margin-top: 10px;
+/* One sunken track holding the choices, so which of them is on is read without comparing colours. */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--hover);
+  border-radius: 8px;
 }
 
-.choice {
+.seg-item {
   border: 0;
   border-radius: 6px;
-  padding: 5px 6px;
+  padding: 4px 9px;
   font: inherit;
-  font-size: 12px;
-  text-align: left;
+  font-size: 11.5px;
+  white-space: nowrap;
   background: transparent;
   color: var(--ink-muted);
   cursor: pointer;
 }
 
-.choice:hover {
-  background: var(--hover);
+.seg-item:hover {
+  color: var(--ink);
 }
 
-.choice:disabled {
-  color: var(--faint);
-  background: transparent;
-  cursor: default;
-}
-
-.choice.on {
+.seg-item.on {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+/* The one row that does something rather than choosing, so it reads as a button and not as a state. */
+.plain {
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.plain:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.plain:disabled {
+  color: var(--faint);
+  cursor: default;
 }
 
 .empty {

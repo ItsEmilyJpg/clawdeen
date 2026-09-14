@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 
+import { asStateWord } from '../shared/i18n'
 import type { Session, Spell } from '../shared/types'
 
 /**
@@ -71,9 +72,14 @@ export function today(now: number): Spell[] {
        from spells where coalesce(ended, ?1) > ?2 group by word order by seconds desc`
     )
     .all(Math.round(now), since) as { word: string; seconds: number }[]
-  return rows
-    .filter((row) => row.seconds > 0)
-    .map((row) => ({ word: row.word as Spell['word'], seconds: row.seconds }))
+  // Stretches written before the states became keys are Czech words, and the database outlives the
+  // vocabulary: they are read back as keys rather than shown raw or quietly dropped. Only
+  // activities are ever recorded, which is why the key can be taken as one.
+  return rows.flatMap((row) => {
+    if (row.seconds <= 0) return []
+    const word = asStateWord(row.word)
+    return word === null ? [] : [{ word: word as Spell['word'], seconds: row.seconds }]
+  })
 }
 
 /**

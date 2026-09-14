@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import type { Change, Session } from '../../../shared/types'
-import { ago, clock, inWords, prClass, STATE_CLASS } from '../words'
+import { ago, clock, inWords, prClass, say, stateWord, STATE_CLASS } from '../words'
 
 const props = defineProps<{ session: Session; left: number; top: number }>()
 const emit = defineEmits<{ close: []; chat: [] }>()
@@ -14,18 +14,26 @@ const WIDTH = 560
 const LEAST = 340
 
 /** What a hook last said, in the words the rest of the board already uses. */
-const HEARD: { [word: string]: string } = {
-  working: 'pracuje',
-  asking: 'ptá se',
-  ended: 'skončila'
+const HEARD_KEYS = {
+  working: 'heardWorking',
+  asking: 'heardAsking',
+  ended: 'heardEnded'
+} as const
+
+function heardAs(word: string): string {
+  return word in HEARD_KEYS ? say(HEARD_KEYS[word as keyof typeof HEARD_KEYS]) : word
 }
 
 /** GitHub's review decision, which the row only ever shows folded into one state word. */
-const REVIEW: { [word: string]: string } = {
-  APPROVED: 'schváleno',
-  CHANGES_REQUESTED: 'změny žádané',
-  REVIEW_REQUIRED: 'čeká na review',
-  COMMENTED: 'okomentováno'
+const REVIEW_KEYS = {
+  APPROVED: 'reviewApproved',
+  CHANGES_REQUESTED: 'reviewChanges',
+  REVIEW_REQUIRED: 'reviewRequired',
+  COMMENTED: 'reviewCommented'
+} as const
+
+function reviewAs(word: string): string {
+  return word in REVIEW_KEYS ? say(REVIEW_KEYS[word as keyof typeof REVIEW_KEYS]) : word
 }
 
 const sheet = ref<HTMLElement | null>(null)
@@ -60,16 +68,16 @@ const dot = computed(() => (props.session.activity ? STATE_CLASS[props.session.a
 const marks = computed(() => {
   const session = props.session
   return [
-    session.pinned ? 'připnutá' : null,
-    session.focused ? 'otevřená v Claude' : null,
-    session.active ? 'právě se hýbe' : null
+    session.pinned ? say('markPinned') : null,
+    session.focused ? say('markFocused') : null,
+    session.active ? say('markActive') : null
   ].filter((mark): mark is string => mark !== null)
 })
 
 /** How long a stretch has run, said as both a length and a time, where its start is known at all. */
 function lasting(from: number | null): string | null {
   if (from === null) return null
-  return `${inWords(Date.now() / 1000 - from)} · od ${clock(from)}`
+  return `${inWords(Date.now() / 1000 - from)} · ${say('since', clock(from))}`
 }
 
 /** How long the session has been on whatever it is on, where the start of it is known at all. */
@@ -80,21 +88,21 @@ const standingSince = computed(() => lasting(props.session.entered))
 
 /** Open, a draft, merged or closed: the pull request's own state, said rather than only coloured. */
 function standing(change: Change): string {
-  if (change.state === 'merged') return 'merged'
-  if (!change.open) return 'zavřené'
-  return change.draft ? 'koncept' : 'otevřené'
+  if (change.state === 'merged') return stateWord('merged')
+  if (!change.open) return stateWord('closed')
+  return stateWord(change.draft ? 'draft' : 'open')
 }
 
 /** How far the run got, which the row only says for the one change it stands on, and only in part. */
 function checks(change: Change): string | null {
   const run = change.progress
   if (run.total === 0) return null
-  const parts = [`${run.done}/${run.total} hotovo`]
-  if (run.failed > 0) parts.push(`${run.failed} spadlo`)
+  const parts = [say('checksDone', `${run.done}/${run.total}`)]
+  if (run.failed > 0) parts.push(say('checksFailed', run.failed))
   if (run.done < run.total && run.since) {
-    parts.push(`běží ${inWords(Date.now() / 1000 - run.since)}`)
+    parts.push(say('checksRunning', inWords(Date.now() / 1000 - run.since)))
   } else if (run.until) {
-    parts.push(`doběhlo ${ago(run.until)}`)
+    parts.push(say('checksFinished', ago(run.until)))
   }
   return parts.join(' · ')
 }
@@ -158,51 +166,57 @@ onUnmounted(() => {
             <span v-for="mark in marks" :key="mark" class="mark">{{ mark }}</span>
           </p>
         </div>
-        <button class="close" title="Zavřít" @click="emit('close')">×</button>
+        <button class="close" :title="say('close')" @click="emit('close')">×</button>
       </header>
 
       <div class="body">
         <section class="block">
-          <h3>Stav</h3>
+          <h3>{{ say('blockState') }}</h3>
           <dl>
-            <dt>stav</dt>
+            <dt>{{ say('fieldState') }}</dt>
             <dd>
-              <span :class="['chip', STATE_CLASS[session.state]]">{{ session.state }}</span>
+              <span :class="['chip', STATE_CLASS[session.state]]">{{
+                stateWord(session.state)
+              }}</span>
             </dd>
 
             <template v-if="session.activity">
-              <dt>dělá</dt>
+              <dt>{{ say('fieldDoing') }}</dt>
               <dd>
-                <span :class="['chip', STATE_CLASS[session.activity]]">{{ session.activity }}</span>
+                <span :class="['chip', STATE_CLASS[session.activity]]">{{
+                  stateWord(session.activity)
+                }}</span>
               </dd>
             </template>
 
             <template v-if="session.about">
-              <dt>čeká na</dt>
+              <dt>{{ say('fieldWaitingOn') }}</dt>
               <dd>{{ session.about }}</dd>
             </template>
 
             <template v-if="going">
-              <dt>trvá</dt>
+              <dt>{{ say('fieldLasts') }}</dt>
               <dd>{{ going }}</dd>
             </template>
 
             <template v-if="standingSince">
-              <dt>ve stavu</dt>
+              <dt>{{ say('fieldInState') }}</dt>
               <dd>{{ standingSince }}</dd>
             </template>
 
             <template v-if="session.extra">
-              <dt>vedle toho</dt>
+              <dt>{{ say('fieldBeside') }}</dt>
               <dd>
-                <span :class="['chip', STATE_CLASS[session.extra]]">{{ session.extra }}</span>
+                <span :class="['chip', STATE_CLASS[session.extra]]">{{
+                  stateWord(session.extra)
+                }}</span>
               </dd>
             </template>
 
             <!-- Silence is worth saying out loud: it means the files answered, not the hooks. -->
-            <dt>hooky</dt>
+            <dt>{{ say('fieldHooks') }}</dt>
             <dd :class="{ none: !session.heard }">
-              {{ session.heard ? (HEARD[session.heard] ?? session.heard) : 'nic neslyšeno' }}
+              {{ session.heard ? heardAs(session.heard) : say('nothingHeard') }}
             </dd>
 
             <!--
@@ -212,26 +226,26 @@ onUnmounted(() => {
               the session being out of date, not the board disagreeing with itself.
             -->
             <template v-if="session.title !== session.headline">
-              <dt>název</dt>
+              <dt>{{ say('fieldName') }}</dt>
               <dd class="said">{{ session.title }}</dd>
             </template>
 
-            <dt>pohyb</dt>
+            <dt>{{ say('fieldMovement') }}</dt>
             <dd>
-              {{ session.last ? `${ago(session.last)} · ${clock(session.last)}` : 'neví se' }}
+              {{ session.last ? `${ago(session.last)} · ${clock(session.last)}` : say('unknown') }}
             </dd>
           </dl>
         </section>
 
         <section v-if="session.issue" class="block">
-          <h3>Issue</h3>
+          <h3>{{ say('blockIssue') }}</h3>
           <a class="chip issue" :href="session.issue.url" @click.prevent="open(session.issue!.url)">
             {{ session.issue.label }}
           </a>
         </section>
 
         <section v-if="session.changes.length > 0" class="block">
-          <h3>{{ session.changes.length === 1 ? 'Pull request' : 'Pull requesty' }}</h3>
+          <h3>{{ session.changes.length === 1 ? say('prOne') : say('prMany') }}</h3>
           <article v-for="change in session.changes" :key="change.url" class="change">
             <div class="top">
               <a
@@ -242,33 +256,35 @@ onUnmounted(() => {
                 {{ change.label }}
               </a>
               <span class="word">{{ standing(change) }}</span>
-              <span v-if="change === session.change" class="on">stojí na něm</span>
+              <span v-if="change === session.change" class="on">{{ say('standsOn') }}</span>
             </div>
             <dl>
               <template v-if="change.branch">
-                <dt>větev</dt>
+                <dt>{{ say('fieldBranch') }}</dt>
                 <dd class="mono">{{ change.branch }}</dd>
               </template>
 
               <template v-if="change.conflict">
-                <dt>konflikt</dt>
-                <dd><span class="chip s-conflict">nejde zmergovat</span></dd>
+                <dt>{{ stateWord('conflict') }}</dt>
+                <dd>
+                  <span class="chip s-conflict">{{ say('cannotMerge') }}</span>
+                </dd>
               </template>
 
               <template v-if="change.review">
-                <dt>review</dt>
-                <dd>{{ REVIEW[change.review] ?? change.review }}</dd>
+                <dt>{{ say('fieldReview') }}</dt>
+                <dd>{{ reviewAs(change.review) }}</dd>
               </template>
 
               <template v-if="checks(change)">
-                <dt>checky</dt>
+                <dt>{{ say('fieldChecks') }}</dt>
                 <dd>
                   <a
                     v-if="change.checks"
                     :class="['chip', STATE_CLASS[change.checks]]"
                     :href="change.url + '/checks'"
                     @click.prevent="open(change.url + '/checks')"
-                    >{{ change.checks }}</a
+                    >{{ stateWord(change.checks) }}</a
                   >
                   {{ checks(change) }}
                 </dd>
@@ -276,7 +292,7 @@ onUnmounted(() => {
 
               <!-- Every one of them, where the row stops at three and says nothing about the rest. -->
               <template v-if="change.failed.length > 0">
-                <dt>spadlo</dt>
+                <dt>{{ say('fieldFailed') }}</dt>
                 <dd class="jobs">
                   <a
                     v-for="job in change.failed"
@@ -291,7 +307,7 @@ onUnmounted(() => {
               </template>
 
               <template v-if="change.issues.length > 0">
-                <dt>zavírá</dt>
+                <dt>{{ say('fieldCloses') }}</dt>
                 <dd class="jobs">
                   <a
                     v-for="number in change.issues"
@@ -310,21 +326,23 @@ onUnmounted(() => {
         </section>
 
         <section class="block">
-          <h3>Identita</h3>
+          <h3>{{ say('blockIdentity') }}</h3>
           <dl>
-            <dt>session</dt>
+            <dt>{{ say('fieldSession') }}</dt>
             <dd class="mono pick">{{ session.id }}</dd>
-            <dt>cli</dt>
+            <dt>{{ say('fieldCli') }}</dt>
             <dd :class="['mono', 'pick', { none: !session.cli }]">
-              {{ session.cli || 'neví se' }}
+              {{ session.cli || say('unknown') }}
             </dd>
           </dl>
         </section>
       </div>
 
       <footer>
-        <button class="chip pr" @click="open(APP_SESSION + session.id)">Otevřít v Claude</button>
-        <button class="chip" @click="emit('chat')">Přečíst chat</button>
+        <button class="chip pr" @click="open(APP_SESSION + session.id)">
+          {{ say('openInClaude') }}
+        </button>
+        <button class="chip" @click="emit('chat')">{{ say('readChat') }}</button>
       </footer>
     </section>
   </div>

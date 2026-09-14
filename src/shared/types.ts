@@ -1,36 +1,42 @@
+/**
+ * The closed list of states. These are keys, not words on screen: what a card says is looked up per
+ * language in `i18n.ts`, so a state can be renamed in one language without moving what the history
+ * and the tray agree on. Adding one means adding it to the labels, the classes, the lanes and the
+ * tray colours, exactly as before.
+ */
 export type StateWord =
-  | 'pracuje'
-  | 'gate běží'
-  | 'gate ve frontě'
-  | 'úloha běží'
-  | 'úloha čeká'
-  | 'čeká na tebe'
-  | 'čeká na CI'
-  | 'čeká na issue'
-  | 'čeká na jiné'
-  | 'bez PR'
-  | 'koncept'
-  | 'konflikt'
-  | 'CI běží'
-  | 'CI červené'
-  | 'změny žádané'
-  | 'k mergi'
-  | 'k review'
-  | 'otevřené'
+  | 'working'
+  | 'gate-running'
+  | 'gate-queued'
+  | 'task-running'
+  | 'task-queued'
+  | 'waiting-for-you'
+  | 'waiting-for-ci'
+  | 'waiting-for-issue'
+  | 'waiting-for-other'
+  | 'no-pr'
+  | 'draft'
+  | 'conflict'
+  | 'ci-running'
+  | 'ci-red'
+  | 'changes-requested'
+  | 'mergeable'
+  | 'in-review'
+  | 'open'
   | 'merged'
-  | 'zavřené'
+  | 'closed'
 
 export type ActivityWord = Extract<
   StateWord,
-  | 'pracuje'
-  | 'gate běží'
-  | 'gate ve frontě'
-  | 'úloha běží'
-  | 'úloha čeká'
-  | 'čeká na tebe'
-  | 'čeká na CI'
-  | 'čeká na issue'
-  | 'čeká na jiné'
+  | 'working'
+  | 'gate-running'
+  | 'gate-queued'
+  | 'task-running'
+  | 'task-queued'
+  | 'waiting-for-you'
+  | 'waiting-for-ci'
+  | 'waiting-for-issue'
+  | 'waiting-for-other'
 >
 
 /** How a card says which project it belongs to: a stripe in the repository's colour, or its name. */
@@ -38,6 +44,9 @@ export type ProjectMark = 'stripe' | 'name' | 'none'
 
 /** Which palette the window draws in. `system` is no choice at all: it follows macOS. */
 export type ThemeMode = 'system' | 'light' | 'dark'
+
+/** The languages the board speaks. It lives here so `i18n.ts` and the types do not import in a ring. */
+export type Locale = 'en' | 'cs'
 
 export interface Link {
   label: string
@@ -66,7 +75,7 @@ export interface Change extends Link {
   open: boolean
   draft: boolean
   branch: string | null
-  checks: 'CI běží' | 'CI červené' | null
+  checks: 'ci-running' | 'ci-red' | null
   failed: Job[]
   progress: Progress
   conflict: boolean
@@ -151,4 +160,6 @@ export interface Board {
   order: string[]
   today: Spell[]
   at: number
+  /** The language the window draws in. The renderer reads no settings of its own. */
+  locale: Locale
 }

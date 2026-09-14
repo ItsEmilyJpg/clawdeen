@@ -1,24 +1,27 @@
+import { say, stateWord } from './i18n'
 import type { Change, StateWord, UsageWindow } from './types'
 
 export function ago(moment: number): string {
   const seconds = Math.max(0, Math.round(Date.now() / 1000 - moment))
-  if (seconds < 60) return 'právě teď'
-  if (seconds < 3600) return `před ${Math.floor(seconds / 60)} min`
-  if (seconds < 86400) return `před ${Math.floor(seconds / 3600)} h`
-  return `před ${Math.floor(seconds / 86400)} d`
+  if (seconds < 60) return say('justNow')
+  if (seconds < 3600) return say('agoMinutes', Math.floor(seconds / 60))
+  if (seconds < 86400) return say('agoHours', Math.floor(seconds / 3600))
+  return say('agoDays', Math.floor(seconds / 86400))
 }
 
 export function inWords(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds))
   // A run that started twenty seconds ago should not read as zero minutes.
-  if (whole < 60) return `${whole} s`
-  if (whole < 3600) return `${Math.floor(whole / 60)} min`
-  if (whole < 86400) return `${Math.floor(whole / 3600)} h ${Math.floor((whole % 3600) / 60)} min`
-  return `${Math.floor(whole / 86400)} d ${Math.floor((whole % 86400) / 3600)} h`
+  if (whole < 60) return `${whole} ${say('seconds')}`
+  if (whole < 3600) return `${Math.floor(whole / 60)} ${say('minutes')}`
+  if (whole < 86400) {
+    return `${Math.floor(whole / 3600)} ${say('hours')} ${Math.floor((whole % 3600) / 60)} ${say('minutes')}`
+  }
+  return `${Math.floor(whole / 86400)} ${say('days')} ${Math.floor((whole % 86400) / 3600)} ${say('hours')}`
 }
 
 export function clock(moment: number, seconds = false): string {
-  return new Date(moment * 1000).toLocaleTimeString('cs-CZ', {
+  return new Date(moment * 1000).toLocaleTimeString(say('clock'), {
     hour: '2-digit',
     minute: '2-digit',
     ...(seconds ? { second: '2-digit' } : {})
@@ -30,19 +33,20 @@ export function clock(moment: number, seconds = false): string {
  * has been going. A job that failed early keeps the count, because the rest of the run is still out.
  */
 export function stateLabel(state: StateWord, change: Change | null): string {
+  const label = stateWord(state)
   const progress = change?.progress
-  if (!progress || progress.total === 0) return state
+  if (!progress || progress.total === 0) return label
   const running = progress.done < progress.total
-  if (state === 'CI běží' || (state === 'CI červené' && running)) {
+  if (state === 'ci-running' || (state === 'ci-red' && running)) {
     const elapsed = progress.since ? ` · ${inWords(Date.now() / 1000 - progress.since)}` : ''
-    return `${state} ${progress.done}/${progress.total}${elapsed}`
+    return `${label} ${progress.done}/${progress.total}${elapsed}`
   }
   // A run that is over says when, because a red check from yesterday is not the same news as one
   // from two minutes ago.
-  if ((state === 'CI červené' || state === 'k review' || state === 'k mergi') && progress.until) {
-    return `${state} · ${ago(progress.until)}`
+  if ((state === 'ci-red' || state === 'in-review' || state === 'mergeable') && progress.until) {
+    return `${label} · ${ago(progress.until)}`
   }
-  return state
+  return label
 }
 
 /**
@@ -71,9 +75,9 @@ export function burnVerdict(burn: number | null, left: number): 'ok' | 'warn' | 
  */
 export function doubtsOf(window: UsageWindow): string[] {
   const parts: string[] = []
-  if (window.stale !== null) parts.push(`stav před ${inWords(window.stale)}`)
-  if (window.error !== null) parts.push(`neobnoveno: ${window.error}`)
-  if (window.otherAccount !== null) parts.push(`účet ${window.otherAccount}`)
+  if (window.stale !== null) parts.push(say('stale', inWords(window.stale)))
+  if (window.error !== null) parts.push(say('notRefreshed', window.error))
+  if (window.otherAccount !== null) parts.push(say('account', window.otherAccount))
   return parts
 }
 
@@ -86,9 +90,9 @@ export function doubtsOf(window: UsageWindow): string[] {
  */
 export function usageLine(window: UsageWindow): string {
   const head = `${window.short} ${Math.round(window.used)} %`
-  const reset = `reset za ${inWords(window.left)}`
+  const reset = say('resetsIn', inWords(window.left))
   if (doubtsOf(window).length > 0) return `${head} · ${reset}`
-  const burn = window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`
+  const burn = window.burn === null ? say('burnsNothing') : say('burnsIn', inWords(window.burn))
   return `${head} · ${burn} · ${reset}`
 }
 

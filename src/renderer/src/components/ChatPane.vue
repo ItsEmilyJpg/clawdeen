@@ -2,7 +2,7 @@
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import type { Call, Line, Session } from '../../../shared/types'
-import { clock } from '../words'
+import { clock, say, toolCount } from '../words'
 
 const props = defineProps<{ session: Session | null }>()
 const emit = defineEmits<{ close: [] }>()
@@ -65,7 +65,7 @@ function open(url: string): void {
 /** What the fold says while it is closed. */
 function named(calls: Call[]): string {
   const count = calls.length
-  return `${count} ${count === 1 ? 'nástroj' : count < 5 ? 'nástroje' : 'nástrojů'}`
+  return toolCount(count)
 }
 
 /** The little of Markdown a conversation actually uses, escaped first so nothing can be injected. */
@@ -86,12 +86,12 @@ function rendered(text: string): string {
         <div class="title">{{ session.headline }}</div>
         <div class="meta">{{ session.place }}</div>
       </div>
-      <button class="close" title="Zavřít" @click="emit('close')">×</button>
+      <button class="close" :title="say('close')" @click="emit('close')">×</button>
     </header>
 
     <div ref="talk" class="talk">
-      <p v-if="loading" class="empty">Čte se…</p>
-      <p v-else-if="lines.length === 0" class="empty">Z téhle session se nedá nic přečíst.</p>
+      <p v-if="loading" class="empty">{{ say('reading') }}</p>
+      <p v-else-if="lines.length === 0" class="empty">{{ say('nothingToRead') }}</p>
       <div v-for="(line, index) in lines" :key="index" :class="['line', line.role]">
         <!-- eslint-disable-next-line vue/no-v-html -- escaped in rendered() above -->
         <div v-if="line.text" class="text" v-html="rendered(line.text)"></div>
@@ -108,7 +108,7 @@ function rendered(text: string): string {
 
     <footer>
       <button class="chip pr" @click="open('claude://code/continue?session=' + session.id)">
-        Otevřít v Claude
+        {{ say('openInClaude') }}
       </button>
     </footer>
   </aside>

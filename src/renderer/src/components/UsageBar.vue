@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import type { UsageWindow } from '../../../shared/types'
-import { burnVerdict, clock, doubtsOf, inWords } from '../words'
+import { burnVerdict, clock, decimal, doubtsOf, inWords, say } from '../words'
 
 const props = defineProps<{ windows: UsageWindow[]; compact?: boolean }>()
 
@@ -21,17 +21,17 @@ function verdict(window: UsageWindow): string {
 }
 
 function burnt(window: UsageWindow): string {
-  return window.burn === null ? 'nespálíš nic' : `spálíš za ${inWords(window.burn)}`
+  return window.burn === null ? say('burnsNothing') : say('burnsIn', inWords(window.burn))
 }
 
 /** When the window comes back, which is the number the burn is read against. */
 function until(window: UsageWindow): string {
-  return `reset za ${inWords(window.left)}`
+  return say('resetsIn', inWords(window.left))
 }
 
 function rest(window: UsageWindow): string {
-  const parts = [`${until(window)}, v ${clock(window.resets)}`]
-  if (window.pace) parts.push(`tempo ${window.pace.toFixed(1).replace('.', ',')}×`)
+  const parts = [`${until(window)}, ${say('atTime', clock(window.resets))}`]
+  if (window.pace) parts.push(say('pace', decimal(window.pace, 1)))
   return parts.join(' · ')
 }
 
