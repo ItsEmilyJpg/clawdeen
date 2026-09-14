@@ -4,6 +4,8 @@ A board of the Claude Code sessions on this Mac: what each one is doing, where i
 stands, and what is left of the usage windows. It lives in the menu bar, notifies when a session
 starts waiting for an answer, and opens any of them in the Claude app with one click.
 
+![The board, its cards in lanes by what each session is doing](docs/board.png)
+
 ## What it reads
 
 Everything is local. Nothing is sent anywhere, and the only network calls are the ones `gh` and
@@ -97,6 +99,29 @@ and passes, rather than reading as a clean tree.
 [{ "name": "employer", "pattern": "examplecorp", "flags": "i", "canary": "ExampleCorp" }]
 ```
 
+## What you need
+
+macOS, and Node 22 or newer to build it. The board reads what Claude Code and the Claude desktop
+app already write, so there is nothing to set up before the first row appears.
+
+`gh`, signed in, is what fills the pull request column, and `glab` does the same for GitLab. With
+neither, a row still says what its session is doing and leaves the change blank, which is the honest
+answer rather than a guessed one.
+
+## Live state from the hooks
+
+Reading the transcripts says what a session was doing a moment ago. A hook says it as it happens,
+and the board asks for one from its own tray menu, because whoever downloads a build has no checkout
+to run a script from. From a checkout:
+
+```bash
+npm run hook:install   # adds the hook to ~/.claude/settings.json, keeping what was there beside it
+npm run hook:remove    # takes it out again
+```
+
+Nothing breaks without it. The hook posts to a loopback port with a token written next to the other
+configuration, and reading the files stays the fallback for everything the board does not hear.
+
 ## Running it
 
 ```bash
@@ -112,7 +137,11 @@ The build is not signed or notarised, so the first launch is a right click and *
 ## What it does not know
 
 The desktop app keeps a pending permission prompt in memory only, so a session held up by one reads
-as `pracuje` rather than as waiting. A question asked with `AskUserQuestion` or a plan waiting for
+as `working` rather than as waiting. A question asked with `AskUserQuestion` or a plan waiting for
 approval is read correctly, because those reach the transcript.
 
 The record format is undocumented and was read off the app; a Claude update can change it.
+
+## Licence
+
+MIT, in `LICENSE`.
