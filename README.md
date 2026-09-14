@@ -1,15 +1,33 @@
-# Clawdeen
+<div align="center">
 
-A board of the Claude Code sessions on this Mac: what each one is doing, where its pull request
-stands, and what is left of the usage windows. It lives in the menu bar, notifies when a session
-starts waiting for an answer, and opens any of them in the Claude app with one click.
+<img src="docs/banner.png" alt="Clawdeen" width="820">
 
-![The board, its cards in lanes by what each session is doing](docs/board.png)
+**What each session is doing, where its pull request stands, and what is left of the usage windows.**
+
+It lives in the menu bar, notifies when a session starts waiting for an answer,
+and opens any of them in the Claude app with one click.
+
+[What it reads](#what-it-reads) ·
+[The words a row can say](#the-words-a-row-can-say) ·
+[Configuration](#configuration) ·
+[What you need](#what-you-need) ·
+[Running it](#running-it)
+
+![macOS](https://img.shields.io/badge/macOS-Apple_silicon-2b3644)
+![Electron](https://img.shields.io/badge/Electron-39-4a5964)
+![Vue](https://img.shields.io/badge/Vue-3.5-64c39a)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-5f8fd8)
+![Licence](https://img.shields.io/badge/licence-MIT-8b98a4)
+
+<img src="docs/board.png" alt="The board, its cards in lanes by what each session is doing" width="880">
+
+</div>
 
 ## What it reads
 
-Everything is local. Nothing is sent anywhere, and the only network calls are the ones `gh` and
-`glab` make for pull requests.
+Everything is read locally and nothing about a session leaves the machine. Three calls go out at
+all: the ones `gh` and `glab` make for pull requests, and one to `api.anthropic.com` for the usage
+windows, which sends a token and asks for two percentages.
 
 | Source                                                                             | For                                                                                                                                                                                                                                 |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -51,6 +51,29 @@ const trayIcon = (size) => `
   </g>
 </svg>`
 
+/** The head of the README: the same three marks, the name, and what the thing is in one line. */
+const banner = () => `
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="300" viewBox="0 0 1280 300">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2530"/>
+      <stop offset="1" stop-color="#0d1319"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="300" fill="url(#ground)"/>
+  <g transform="translate(156 162) scale(0.27) translate(-512 -512)">
+    <g transform="rotate(-24 512 512)">
+      ${claw(-170, -9, 0.84, '#f0a17a')}
+      ${claw(0, 0, 1, '#64c39a')}
+      ${claw(170, 9, 0.9, '#7c8b98')}
+    </g>
+  </g>
+  <text x="286" y="156" fill="#e8edf2" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif"
+        font-size="86" font-weight="600" letter-spacing="10">CLAWDEEN</text>
+  <text x="290" y="206" fill="#8b98a4" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif"
+        font-size="27" letter-spacing="1.5">a board of the Claude Code sessions on this Mac</text>
+</svg>`
+
 let sheet = null
 
 /** One window for every icon: a second transparent offscreen window refuses to load at all. */
@@ -69,8 +92,8 @@ async function open() {
   await sheet.loadFile(page)
 }
 
-async function draw(svg, size, path) {
-  sheet.setContentSize(size, size)
+async function draw(svg, wide, tall, path) {
+  sheet.setContentSize(wide, tall)
   await sheet.webContents.executeJavaScript(`document.body.innerHTML = ${JSON.stringify(svg)}`)
   // Capturing straight after the write gives the previous frame, or an empty one.
   await new Promise((resolve) => setTimeout(resolve, 250))
@@ -82,10 +105,11 @@ async function draw(svg, size, path) {
 
 app.whenReady().then(async () => {
   await open()
-  await draw(appIcon(1024), 1024, join(root, 'build', 'icon.png'))
-  await draw(appIcon(512), 512, join(root, 'resources', 'icon.png'))
-  await draw(trayIcon(18), 18, join(root, 'resources', 'trayTemplate.png'))
-  await draw(trayIcon(36), 36, join(root, 'resources', 'trayTemplate@2x.png'))
+  await draw(appIcon(1024), 1024, 1024, join(root, 'build', 'icon.png'))
+  await draw(appIcon(512), 512, 512, join(root, 'resources', 'icon.png'))
+  await draw(trayIcon(18), 18, 18, join(root, 'resources', 'trayTemplate.png'))
+  await draw(trayIcon(36), 36, 36, join(root, 'resources', 'trayTemplate@2x.png'))
+  await draw(banner(), 1280, 300, join(root, 'docs', 'banner.png'))
   sheet.destroy()
   app.exit(0)
 })
