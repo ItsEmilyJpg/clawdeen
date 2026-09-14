@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { waitingOn } from '../src/main/board'
+import { release, waitingOn } from '../src/main/board'
 import { checksOf } from '../src/main/forge'
 import { openSession } from '../src/main/records'
 import {
@@ -12,7 +12,7 @@ import {
   stateLabel,
   usageRows
 } from '../src/shared/words'
-import { inLane, LANE_WORDS, laneRows } from '../src/renderer/src/words'
+import { inLane, LANE_WORDS, laneRows, STATE_CLASS } from '../src/renderer/src/words'
 import { asStateWord, everyStateWord, money, setLocale, stateWord } from '../src/shared/i18n'
 import type { Change, Session, StateWord, UsageWindow } from '../src/shared/types'
 
@@ -474,5 +474,96 @@ describe('repoColour', () => {
 
   it('answers with a colour even for a name that says nothing', () => {
     expect(repoColour('')).toMatch(/^#[0-9a-f]{6}$/)
+  })
+})
+
+describe('release', () => {
+  function parked(over: Partial<Session> = {}): Session {
+    return {
+      id: 'one',
+      cli: 'claude',
+      title: 'one',
+      headline: 'one',
+      place: 'repo',
+      project: 'repo',
+      last: 1789219700,
+      active: false,
+      issue: null,
+      change: null,
+      changes: [],
+      state: 'no-pr',
+      activity: 'waiting-for-you',
+      extra: null,
+      about: null,
+      since: 1789219000,
+      action: null,
+      entered: null,
+      heard: null,
+      pinned: false,
+      focused: false,
+      ...over
+    }
+  }
+
+  it('says the word she set over the one the files said', () => {
+    const sessions = [parked()]
+    expect(release(sessions, ['one'])).toEqual([])
+    expect(sessions[0].activity).toBe('on-hold')
+  })
+
+  it('drops what the row said about a wait nobody is waiting on', () => {
+    const sessions = [parked({ about: 'run #12' })]
+    release(sessions, ['one'])
+    expect(sessions[0].about).toBeNull()
+    expect(sessions[0].since).toBeNull()
+  })
+
+  it('leaves a session she never parked alone', () => {
+    const sessions = [parked({ id: 'other' })]
+    release(sessions, ['one'])
+    expect(sessions[0].activity).toBe('waiting-for-you')
+  })
+
+  it('takes the mark off a session that has started working again', () => {
+    const sessions = [parked({ activity: 'working' })]
+    expect(release(sessions, ['one'])).toEqual(['one'])
+    expect(sessions[0].activity).toBe('working')
+  })
+
+  it('keeps a queued check parked, because queued is what she parked it for', () => {
+    const sessions = [parked({ activity: 'gate-queued' })]
+    expect(release(sessions, ['one'])).toEqual([])
+    expect(sessions[0].activity).toBe('on-hold')
+  })
+
+  it('parks a session with nothing to say for itself at all', () => {
+    const sessions = [parked({ activity: null })]
+    release(sessions, ['one'])
+    expect(sessions[0].activity).toBe('on-hold')
+  })
+
+  it('does nothing at all where she has parked nothing', () => {
+    const sessions = [parked()]
+    expect(release(sessions, [])).toEqual([])
+    expect(sessions[0].activity).toBe('waiting-for-you')
+  })
+})
+
+describe('the parked word', () => {
+  it('has a lane, under every wait and above the leftovers', () => {
+    expect(LANE_WORDS).toContain('on-hold')
+    expect(LANE_WORDS.indexOf('on-hold')).toBeGreaterThan(LANE_WORDS.indexOf('waiting-for-other'))
+    expect(LANE_WORDS.at(-1)).toBeNull()
+  })
+
+  it('has a class to be drawn in', () => {
+    expect(STATE_CLASS['on-hold']).toBeTruthy()
+  })
+
+  it('is said in both languages', () => {
+    setLocale('cs')
+    expect(stateWord('on-hold')).toBe('odložená')
+    setLocale('en')
+    expect(stateWord('on-hold')).toBe('on hold')
   })
 })

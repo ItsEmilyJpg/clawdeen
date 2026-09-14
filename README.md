@@ -42,7 +42,9 @@ windows, which sends a token and asks for two percentages.
 
 Its own data lives in the application's `userData` directory and nothing else is written anywhere:
 `order.json` for the order cards were dragged into, `window.json` for where the window was,
-`usage.json` for the last reading of the windows that came back, and
+`usage.json` for the last reading of the windows that came back, `settings.json` for the language,
+the repositories that are hidden and the order they were dragged into, and the sessions put on
+hold, and
 `history.db`, a SQLite with one row per stretch of a state. The database is opened with Node's own
 `node:sqlite`, which is why this carries no native dependency; Node still calls it experimental and
 says so on every start.
@@ -54,11 +56,17 @@ settings that outlives the window. The words below are the English ones.
 
 **What the session is doing:** `working`, `gate running`, `gate queued`, `task running`,
 `task queued` (a monitor, or a backgrounded command that has written nothing for five minutes),
-`waiting for you`. **Where its change stands:** `no PR`, `draft`, `conflict`, `CI running`,
+`waiting for you`, `on hold`. **Where its change stands:** `no PR`, `draft`, `conflict`, `CI running`,
 `CI red`, `changes requested`, `ready to merge`, `in review`, `merged`, `closed`. A red CI also
 names the job that failed and links to it.
 
 A session waiting on an answer is sorted to the top, its dot turns amber, and the tray counts it.
+
+`on hold` is the one word on this board that is not read off anything: it is set from the row's own
+menu, for a session parked on somebody who is not you. A parked row says so instead of saying it
+waits on you, drops out of the tray count and into its own lane, and stays exactly where it was
+otherwise. It comes off the shelf from the same menu, and on its own the moment the session works
+again, because the mark was only ever about the silence.
 While a set of checks is running the word carries how many are done and how long it has been going;
 once the run is over it says how long ago it finished.
 
