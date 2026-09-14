@@ -17,6 +17,11 @@ export interface Settings {
    * moved: a name missing here has never been arranged and sorts after those that have.
    */
   projectOrder: string[]
+  /**
+   * The sessions she has parked, by session id. Kept here and not read off anything Claude writes,
+   * because Claude knows nothing about it: the star on a session is its own thing and means pinned.
+   */
+  held: string[]
 }
 
 function file(): string {
@@ -34,14 +39,15 @@ export function settings(): Settings {
     const projectOrder = Array.isArray(kept.projectOrder)
       ? kept.projectOrder.filter((one) => typeof one === 'string')
       : []
+    const held = Array.isArray(kept.held) ? kept.held.filter((one) => typeof one === 'string') : []
     if (kept.locale === 'en' || kept.locale === 'cs') {
-      return { locale: kept.locale, hidden, projectOrder }
+      return { locale: kept.locale, hidden, projectOrder, held }
     }
-    return { locale: localeOf(app.getLocale()), hidden, projectOrder }
+    return { locale: localeOf(app.getLocale()), hidden, projectOrder, held }
   } catch {
     // No file yet, or one nobody can read. Either way the system is what to open in.
   }
-  return { locale: localeOf(app.getLocale()), hidden: [], projectOrder: [] }
+  return { locale: localeOf(app.getLocale()), hidden: [], projectOrder: [], held: [] }
 }
 
 export function saveSettings(patch: Partial<Settings>): void {

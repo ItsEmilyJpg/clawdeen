@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 
 import { everyStateWord, locale, say } from '../shared/i18n'
 import { ordered } from '../shared/projects'
-import { settings } from './settings'
+import { saveSettings, settings } from './settings'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
@@ -232,6 +232,50 @@ export function waitingOn(doing: Doing2, change: Change | null): ActivityWord | 
 }
 
 /**
+ * What counts as the session doing something of its own, and therefore as not parked any more.
+ *
+ * Queued is not running: a check waiting its turn behind a session she has set aside is exactly the
+ * kind of wait she parked it for.
+ */
+const RUNNING: ReadonlySet<ActivityWord> = new Set<ActivityWord>([
+  'working',
+  'task-running',
+  'gate-running'
+])
+
+/**
+ * The one mark she sets herself, applied over what the files said, and taken off again by them.
+ *
+ * A parked session says `odložená` and sits in its own lane instead of standing in the queue of
+ * things waiting on her. It stops being parked the moment it does something of its own: the mark
+ * was about the silence, and the silence is over. That is written back rather than only drawn, so
+ * the next pass does not have to work it out again and the settings say what is actually parked.
+ *
+ * Everything the row said about the wait goes with the word. `since` timed a task nobody is waiting
+ * on any more, and `about` named a monitor the row no longer speaks for; how long it has been
+ * parked is the stretch history's answer, the same one every other state gets.
+ *
+ * Marks the sessions and hands back the ids that woke, rather than writing the settings itself: the
+ * caller owns that file, and a function that only decides can be asked the question in a test.
+ */
+export function release(sessions: Session[], parked: readonly string[]): string[] {
+  const held = new Set(parked)
+  if (held.size === 0) return []
+  const woken: string[] = []
+  for (const session of sessions) {
+    if (!held.has(session.id)) continue
+    if (session.activity && RUNNING.has(session.activity)) {
+      woken.push(session.id)
+      continue
+    }
+    session.activity = 'on-hold'
+    session.since = null
+    session.about = null
+  }
+  return woken
+}
+
+/**
  * Where the session works, which is not where it was opened as soon as the work happens in another
  * checkout: the newest directory its own commands name, where that is a working copy at all.
  */
@@ -343,6 +387,9 @@ export async function board(): Promise<Board> {
   const sessions = await Promise.all(
     found.map((record) => describe(record, now, index, config, trackers, open))
   )
+  const parked = settings().held
+  const woken = release(sessions, parked)
+  if (woken.length > 0) saveSettings({ held: parked.filter((id) => !woken.includes(id)) })
   // How long a card has stood where it stands, off the stretch the last pass left open, so a lane
   // can hold its order while the sessions in it work. A word that has only just changed has no
   // stretch under it yet, and a session doing nothing never gets one.

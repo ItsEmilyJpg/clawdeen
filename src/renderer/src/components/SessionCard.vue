@@ -47,6 +47,18 @@ function act(what: 'detail' | 'chat', event: MouseEvent): void {
   expand(event)
 }
 
+/** Parked, or off the shelf again. The word is the answer: nothing else on the row remembers it. */
+const parked = computed(() => props.session.activity === 'on-hold')
+
+/**
+ * The menu is closed by the board, not here: `acting` is a prop since the sweep started unmounting
+ * open rows, so the row asks for the toggle it already has rather than writing the flag itself.
+ */
+function park(): void {
+  emit('acts')
+  void window.api.hold(props.session.id, !parked.value)
+}
+
 const FAILED_SHOWN = 3
 const TOO_LONG = 600
 /** How much of a call fits beside the rest of a row before it pushes everything else off it. */
@@ -260,6 +272,9 @@ function open(url: string): void {
         </button>
         <button class="action" :title="say('readChat')" @click.stop="act('chat', $event)">
           {{ say('actionChat') }}
+        </button>
+        <button class="action" :title="say('cardHold')" @click.stop="park()">
+          {{ say(parked ? 'actionUnhold' : 'actionHold') }}
         </button>
       </div>
     </div>

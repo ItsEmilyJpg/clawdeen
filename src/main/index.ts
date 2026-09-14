@@ -63,6 +63,7 @@ const DOT: { [key in StateWord]: Dot } = {
   'waiting-for-ci': 'blue',
   'waiting-for-issue': 'grey',
   'waiting-for-other': 'grey',
+  'on-hold': 'grey',
   'no-pr': 'grey',
   draft: 'amber',
   conflict: 'red',
@@ -459,6 +460,14 @@ void app.whenReady().then(() => {
   // every session, so a hidden repository is out of sight and never out of earshot.
   ipcMain.handle('hide', async (_event, project: string, shown: boolean) => {
     saveSettings({ hidden: withProject(settings().hidden, project, shown) })
+    await refresh()
+  })
+  // Parked, or taken off the shelf again. One id at a time, unlike the repositories: this is one
+  // row's menu answering for that row, and nothing else on the page knows the list.
+  ipcMain.handle('hold', async (_event, id: string, on: boolean) => {
+    const kept = settings().held
+    if (kept.includes(id) === on) return
+    saveSettings({ held: on ? [...kept, id] : kept.filter((one) => one !== id) })
     await refresh()
   })
   // The whole list as she arranged it, not the one name that moved: the page already knows where

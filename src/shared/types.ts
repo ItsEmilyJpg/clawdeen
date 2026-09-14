@@ -14,6 +14,11 @@ export type StateWord =
   | 'waiting-for-ci'
   | 'waiting-for-issue'
   | 'waiting-for-other'
+  /**
+   * The one word she sets herself. Everything else here is read off a file, a hook or a command;
+   * this one says a session is parked on somebody who is not her, which no file knows.
+   */
+  | 'on-hold'
   | 'no-pr'
   | 'draft'
   | 'conflict'
@@ -26,6 +31,11 @@ export type StateWord =
   | 'merged'
   | 'closed'
 
+/**
+ * `on-hold` sits here although she asserts it rather than the board reading it, which is the one
+ * exception on this list. A lane groups by this type, so a word left out of it has no lane to sit
+ * in and nothing to displace `waiting-for-you` with on the row, which is the whole point of it.
+ */
 export type ActivityWord = Extract<
   StateWord,
   | 'working'
@@ -37,6 +47,7 @@ export type ActivityWord = Extract<
   | 'waiting-for-ci'
   | 'waiting-for-issue'
   | 'waiting-for-other'
+  | 'on-hold'
 >
 
 /** How a card says which project it belongs to: a stripe in the repository's colour, or its name. */
