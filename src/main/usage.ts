@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { say, type PhraseKey } from '../shared/i18n'
-import type { UsageWindow } from '../shared/types'
+import type { Spend, UsageWindow } from '../shared/types'
 import { burnOf } from '../shared/words'
 import { CLI_CONFIG } from './paths'
 
@@ -30,9 +30,10 @@ const WINDOWS: [string, PhraseKey, string, number][] = [
   ['seven_day', 'windowSevenDay', '7 d', 10080]
 ]
 
-// The same question Claude Code asks itself: `at_wall=1` wants the values at the wall of the
-// window, `skip_spend=1` leaves out the spend nobody here reads.
-const ENDPOINT = 'https://api.anthropic.com/api/oauth/usage?at_wall=1&skip_spend=1'
+// The same question Claude Code asks itself, `at_wall=1` wanting the values at the wall of the
+// window. `skip_spend=1` used to ride with it and no longer does: it is what leaves `extra_usage`
+// out of the answer, and that is the only place the credits are counted.
+const ENDPOINT = 'https://api.anthropic.com/api/oauth/usage?at_wall=1'
 const KEYCHAIN = 'Claude Code-credentials'
 /** A token that expires on the way answers 401, and the window would stand still on a stale number. */
 const SPARE = 60_000
@@ -49,7 +50,9 @@ interface Stored {
   account?: string
   /** Why this reading could not be taken; only ever set on one we did not manage to take. */
   error?: string
-  [key: string]: StoredWindow | string | number | undefined
+  /** Absent rather than zero when the account has never spent a credit. */
+  spend?: Spend
+  [key: string]: StoredWindow | Spend | string | number | undefined
 }
 
 async function stored(): Promise<Stored> {
@@ -105,6 +108,36 @@ async function token(): Promise<{ value: string } | { error: string }> {
   return { value: oauth.accessToken }
 }
 
+/** One window as the answer has it, or null when what came back is not a window at all. */
+function gauge(value: unknown): { utilization: number; resets_at?: string } | null {
+  if (typeof value !== 'object' || value === null) return null
+  const { utilization, resets_at: resets } = value as { utilization?: number; resets_at?: string }
+  if (typeof utilization !== 'number') return null
+  return { utilization, resets_at: resets }
+}
+
+/**
+ * The credits out of `extra_usage`, or nothing at all.
+ *
+ * Nothing is the answer to every doubt here, because a badge that says the wrong amount is worse
+ * than no badge: without `decimal_places` the same figure reads as either 374.95 or 37,495, and
+ * which of the two it is cannot be guessed from the number.
+ */
+function spendOf(value: unknown): Spend | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const extra = value as {
+    is_enabled?: boolean
+    used_credits?: number
+    currency?: string
+    decimal_places?: number
+  }
+  if (extra.is_enabled !== true) return undefined
+  if (typeof extra.used_credits !== 'number' || extra.used_credits <= 0) return undefined
+  if (typeof extra.currency !== 'string' || typeof extra.decimal_places !== 'number')
+    return undefined
+  return { used: extra.used_credits, currency: extra.currency, decimals: extra.decimal_places }
+}
+
 /** `resets_at` comes as ISO 8601 here, and everything below this line counts in epoch seconds. */
 function epochSeconds(value: unknown): number | undefined {
   if (typeof value === 'number') return value
@@ -122,7 +155,7 @@ function epochSeconds(value: unknown): number | undefined {
 async function live(now: number): Promise<Stored> {
   const key = await token()
   if ('error' in key) return { error: key.error }
-  let payload: Record<string, { utilization?: number; resets_at?: string }>
+  let payload: Record<string, unknown>
   try {
     const response = await fetch(ENDPOINT, {
       headers: {
@@ -140,8 +173,8 @@ async function live(now: number): Promise<Stored> {
   const data: Stored = { captured_at: now }
   let found = false
   for (const [name, , , minutes] of WINDOWS) {
-    const window = payload[name]
-    if (!window || typeof window.utilization !== 'number') continue
+    const window = gauge(payload[name])
+    if (!window) continue
     data[name] = {
       used_percentage: window.utilization,
       resets_at: epochSeconds(window.resets_at),
@@ -149,6 +182,10 @@ async function live(now: number): Promise<Stored> {
     }
     found = true
   }
+  // The credits ride with the windows but do not make a reading: an answer carrying nothing else is
+  // still an answer the board cannot draw.
+  const spent = spendOf(payload.extra_usage)
+  if (spent) data.spend = spent
   // An empty answer is not a reading, and saying so beats drawing a board with no windows on it.
   return found ? data : { error: say('usageEmpty') }
 }
@@ -188,7 +225,7 @@ async function cliAccount(): Promise<string | null> {
 /** The last answer and when it came, so a fifteen second sweep is not fifteen seconds of asking. */
 let reading: { at: number; data: Stored } | null = null
 
-export async function usage(now: number): Promise<UsageWindow[]> {
+export async function usage(now: number): Promise<{ windows: UsageWindow[]; spend: Spend | null }> {
   if (!reading || now - reading.at > TTL) {
     const taken = await live(now)
     if (taken.error === undefined)
@@ -208,7 +245,7 @@ export async function usage(now: number): Promise<UsageWindow[]> {
   const windows: UsageWindow[] = []
   for (const [key, phrase, short] of WINDOWS) {
     const window = data[key]
-    if (typeof window !== 'object' || !window) continue
+    if (typeof window !== 'object' || !window || !('used_percentage' in window)) continue
     const { used_percentage: used, resets_at: resets, duration_minutes: minutes } = window
     if (used === undefined || !resets || !minutes) continue
     // Spent against the share of the window that is gone: above one is faster than it refills.
@@ -230,5 +267,9 @@ export async function usage(now: number): Promise<UsageWindow[]> {
       otherAccount
     })
   }
-  return windows
+  // Off the same reading as the windows, the kept one included: a figure that was true when it was
+  // last read is what the windows say too, and the bar already says once that the reading is old.
+  const kept = data.spend
+  const spend = typeof kept === 'object' && kept !== null && 'used' in kept ? kept : null
+  return { windows, spend }
 }

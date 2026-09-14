@@ -1,8 +1,8 @@
-import { decimal, say, setLocale, stateWord, toolCount } from '../../shared/i18n'
+import { decimal, money, say, setLocale, stateWord, toolCount } from '../../shared/i18n'
 import { byProject } from '../../shared/projects'
 import type { ActivityWord, Change, Session, StateWord } from '../../shared/types'
 
-export { decimal, say, setLocale, stateWord, toolCount }
+export { decimal, money, say, setLocale, stateWord, toolCount }
 export {
   ago,
   burnVerdict,

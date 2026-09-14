@@ -141,6 +141,21 @@ export interface UsageWindow {
   otherAccount: string | null
 }
 
+/**
+ * What credits have paid for, beside the windows the plan itself covers.
+ *
+ * It belongs to neither window: the endpoint counts it across the account, and says nothing about
+ * which stretch of work it was spent on. So the board says the amount and stops there.
+ */
+export interface Spend {
+  /** The amount in minor units, as the endpoint counts it: 37495 at two places is 374.95. */
+  used: number
+  /** ISO 4217, taken from the answer rather than assumed. */
+  currency: string
+  /** How many of the amount's digits are decimal places. */
+  decimals: number
+}
+
 /** A tool call as the pane shows it: what was called and the one argument that says what on. */
 export interface Call {
   name: string
@@ -164,6 +179,8 @@ export interface Spell {
 export interface Board {
   sessions: Session[]
   usage: UsageWindow[]
+  /** What credits have paid for, or null while nothing has been spent or the answer does not say. */
+  spend: Spend | null
   /** Session ids in the order she dragged them into; empty until she does. */
   order: string[]
   today: Spell[]

@@ -260,6 +260,8 @@ interface Phrases {
   tokenExpired: string
   usageStatus: string
   usageEmpty: string
+  credits: string
+  creditsLong: string
   groupProjects: string
   dragProjects: string
   pulseLive: string
@@ -407,6 +409,8 @@ const PHRASES: Record<Locale, Phrases> = {
     tokenExpired: 'the token expired, the renewal is left to Claude Code',
     usageStatus: 'usage answered {n}',
     usageEmpty: 'usage returned no window',
+    credits: 'credits {n}',
+    creditsLong: 'spent on credits: {n}. The answer does not say over what stretch.',
     groupProjects: 'Projects',
     dragProjects: 'Click to switch a repository off, drag to put it where you want it',
     pulseLive: 'read {n} ago, still being read',
@@ -552,6 +556,8 @@ const PHRASES: Record<Locale, Phrases> = {
     tokenExpired: 'token vypršel, obnovu nechávám Claude Code',
     usageStatus: 'usage odpovědělo {n}',
     usageEmpty: 'usage nevrátilo žádné okno',
+    credits: 'kredity {n}',
+    creditsLong: 'utraceno za kredity: {n}. Za jaké období, odpověď neříká.',
     groupProjects: 'Projekty',
     dragProjects: 'Kliknutím repozitář vypneš, přetažením ho přesuneš',
     pulseLive: 'načteno před {n}, čte se dál',
@@ -581,6 +587,27 @@ export function say(key: keyof Phrases, value?: string | number): string {
 export function decimal(value: number, places: number): string {
   const said = value.toFixed(places)
   return chosen === 'cs' ? said.replace('.', ',') : said
+}
+
+/**
+ * An amount of money, written the way the language writes one.
+ *
+ * Both the currency and how many places it counts in come from the answer, never from here: a board
+ * that assumed euros would be wrong the day the account is billed in anything else. An unknown code
+ * makes `Intl` throw, and the amount is then said plainly rather than not at all.
+ */
+export function money(minor: number, currency: string, places: number): string {
+  const value = minor / 10 ** places
+  try {
+    return new Intl.NumberFormat(chosen === 'cs' ? 'cs-CZ' : 'en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: places,
+      maximumFractionDigits: places
+    }).format(value)
+  } catch {
+    return `${decimal(value, places)} ${currency}`
+  }
 }
 
 /** How many tools a turn called. Czech counts in three, English in two, so this is not a phrase. */

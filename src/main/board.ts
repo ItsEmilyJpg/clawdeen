@@ -378,9 +378,11 @@ export async function board(): Promise<Board> {
   const seen = [...new Set(sessions.map((session) => session.project).filter(Boolean))].sort()
   const projectOrder = settings().projectOrder
   const projects = ordered(seen, projectOrder)
+  const { windows, spend } = await usage(now)
   return {
     sessions,
-    usage: await usage(now),
+    usage: windows,
+    spend,
     order: kept,
     today: today(now),
     at: now,
