@@ -5,7 +5,10 @@
 # little file, hands the payload to the loopback in the background and returns. Whatever goes
 # wrong, it goes wrong quietly and exits zero, because a hook that fails is a session that stops.
 payload=$(cat)
-live="$HOME/.config/claude-sessions/live.json"
+# An installed copy outlives a rename, so it looks under the name the board uses now and
+# under the one it used before, in that order.
+live="$HOME/.config/clawdeen/live.json"
+[ -f "$live" ] || live="$HOME/.config/claude-sessions/live.json"
 [ -f "$live" ] || exit 0
 
 port=$(sed -n 's/.*"port"[ :]*\([0-9][0-9]*\).*/\1/p' "$live")

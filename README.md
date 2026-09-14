@@ -29,25 +29,28 @@ says so on every start.
 
 ## The words a row can say
 
-**What the session is doing:** `pracuje`, `gate běží`, `gate ve frontě`, `úloha běží`,
-`úloha čeká` (a monitor, or a backgrounded command that has written nothing for five minutes),
-`čeká na tebe`. **Where its change stands:** `bez PR`, `koncept`, `konflikt`, `CI běží`,
-`CI červené`, `změny žádané`, `k mergi`, `k review`, `merged`, `zavřené`. A red CI also names the
-job that failed and links to it.
+The board speaks English or Czech, whichever the Mac is in, and the language is a choice in the
+settings that outlives the window. The words below are the English ones.
+
+**What the session is doing:** `working`, `gate running`, `gate queued`, `task running`,
+`task queued` (a monitor, or a backgrounded command that has written nothing for five minutes),
+`waiting for you`. **Where its change stands:** `no PR`, `draft`, `conflict`, `CI running`,
+`CI red`, `changes requested`, `ready to merge`, `in review`, `merged`, `closed`. A red CI also
+names the job that failed and links to it.
 
 A session waiting on an answer is sorted to the top, its dot turns amber, and the tray counts it.
 While a set of checks is running the word carries how many are done and how long it has been going;
 once the run is over it says how long ago it finished.
 
 The gauges say how long each usage window lasts at the pace so far, against the reset it is measured
-by: `spálíš za 1 h 49 min · reset za 4 h 25 min`, both of them in the bar at the top as well as in
+by: `spent in 1 h 49 min · resets in 4 h 25 min`, both of them in the bar at the top as well as in
 the gauges. The numbers and the bar are green while the window outlives its reset, amber within a
 tenth of it, red when it runs out first.
 
 What Claude pins is pinned here, marked with an accent down the side of the card. The session open
 in the Claude app is ringed in the same colour, read off the record the app stamps when a card is
 focused, which says which session is open rather than whether she is looking at it. Cards can be
-dragged into any order, which is then hers until the `vlastní pořadí ×` chip gives it back. The
+dragged into any order, which is then hers until the `own order ×` chip gives it back. The
 strip under the gauges says what the day went into, summed across every session.
 
 **Which project a card is on** is a stripe down its right edge, in a colour the repository's name
@@ -64,21 +67,22 @@ it.
 ## Configuration
 
 Both files are optional and live outside this repository, because what they point at is not
-everyone's.
+everyone's. They live in `~/.config/clawdeen/`, and an install made before the board was called
+Clawdeen is read from `~/.config/claude-sessions/` where that directory is the one that exists.
 
-`~/.config/claude-sessions/gates.json` — where a long local check registers itself. The lock is
-taken before the wait for a free slot and the registry only after it, which is how `gate běží` and
-`gate ve frontě` are told apart.
+`~/.config/clawdeen/gates.json` — where a long local check registers itself. The lock is taken
+before the wait for a free slot and the registry only after it, which is how `gate running` and
+`gate queued` are told apart.
 
 ```json
 { "registry": "${TMPDIR}/clawdeen-gates", "lock": "var/check.lock" }
 ```
 
-`~/.config/claude-sessions/jira.json` — tracker key to base URL, for sessions whose work is not on
+`~/.config/clawdeen/jira.json` — tracker key to base URL, for sessions whose work is not on
 GitHub.
 
 ```json
-{ "SIN": "https://example.atlassian.net/browse/" }
+{ "ABC": "https://example.atlassian.net/browse/" }
 ```
 
 ## Running it
