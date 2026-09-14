@@ -1,6 +1,6 @@
 {
   "name": "clawdeen",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A menu bar board of the Claude Code sessions running on this Mac.",
   "main": "./out/main/index.js",
   "author": "Emily",

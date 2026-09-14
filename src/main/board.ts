@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
 import { everyStateWord, locale, say } from '../shared/i18n'
+import { ordered } from '../shared/projects'
 import { settings } from './settings'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
@@ -11,6 +12,7 @@ import { record, standing, today } from './history'
 import { liveAt, liveState } from './live'
 import { order } from './order'
 import {
+  lastCall,
   lastTurn,
   modified,
   pendingWork,
@@ -309,6 +311,9 @@ async function describe(
         ? ((await watchedFor(path))?.about ?? null)
         : null,
     since: doing.since,
+    // Only where the session is working: every other state is a wait, and the tool it stopped on
+    // says nothing about what it is waiting for.
+    action: word === 'working' && path ? await lastCall(path) : null,
     // Filled in by board() from the stretch history, which describing one session cannot see.
     entered: null,
     pinned: Boolean(record.isStarred),
@@ -361,7 +366,9 @@ export async function board(): Promise<Board> {
   // Every repository the window holds, named once and sorted, so the settings can list them without
   // taking a label apart. The sessions themselves are handed over whole: hiding one is the window's
   // business, and the tray counts what the board knows rather than what it draws.
-  const projects = [...new Set(sessions.map((session) => session.project).filter(Boolean))].sort()
+  const seen = [...new Set(sessions.map((session) => session.project).filter(Boolean))].sort()
+  const projectOrder = settings().projectOrder
+  const projects = ordered(seen, projectOrder)
   return {
     sessions,
     usage: await usage(now),
@@ -370,6 +377,7 @@ export async function board(): Promise<Board> {
     at: now,
     locale: locale(),
     projects,
+    projectOrder,
     hidden: settings().hidden
   }
 }

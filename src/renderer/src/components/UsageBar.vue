@@ -30,9 +30,16 @@ function until(window: UsageWindow): string {
 }
 
 function rest(window: UsageWindow): string {
-  const parts = [`${until(window)}, ${say('atTime', clock(window.resets))}`]
-  if (window.pace) parts.push(say('pace', decimal(window.pace, 1)))
-  return parts.join(' · ')
+  return `${until(window)}, ${say('atTime', clock(window.resets))}`
+}
+
+/**
+ * How fast she is spending against how fast the window refills: one is even, and above one is the
+ * number that says a window will not last. It reads as a number of its own rather than as the tail
+ * of a sentence, because it is the one figure here that does not depend on when the reset is.
+ */
+function paced(window: UsageWindow): string | null {
+  return window.pace ? say('pace', decimal(window.pace, 1)) : null
 }
 
 /** Old numbers are dimmed rather than recoloured: the colour already means how fast they burn. */
@@ -58,9 +65,13 @@ function doubted(window: UsageWindow): boolean {
       /></span>
       <!-- Both numbers, because one of them alone decides nothing: what it lasts, against the reset. -->
       <!-- A doubted window says neither: what it burns is arithmetic on a number that stopped moving. -->
+      <!-- The pace rides with what it explains: what the window lasts is arithmetic on it, and a
+           number over one is what says she is spending faster than the window refills. -->
       <span v-if="!doubted(window)" class="sentence">
-        <span :class="['burnt', verdict(window)]">{{ burnt(window) }}</span> ·
-        {{ until(window) }}
+        <span :class="['burnt', verdict(window)]">{{ burnt(window) }}</span>
+        <template v-if="paced(window)"
+          >{{ ' · ' }}<span class="pace">{{ paced(window) }}</span></template
+        >{{ ' · ' }}{{ until(window) }}
       </span>
     </span>
     <span v-if="doubt" class="doubt">{{ doubt }}</span>
@@ -75,7 +86,10 @@ function doubted(window: UsageWindow): boolean {
     >
       <div class="head">
         <span>{{ window.label }}</span>
-        <b :class="verdict(window)">{{ Math.round(window.used) }} %</b>
+        <span class="figures">
+          <b v-if="paced(window)" :class="['rate', verdict(window)]">{{ paced(window) }}</b>
+          <b :class="verdict(window)">{{ Math.round(window.used) }} %</b>
+        </span>
       </div>
       <span class="bar"
         ><i :class="verdict(window)" :style="{ width: `${Math.min(100, window.used)}%` }"
@@ -91,6 +105,24 @@ function doubted(window: UsageWindow): boolean {
 </template>
 
 <style scoped>
+/* In the bar it is part of the sentence, so it is said quietly; in the gauge it is a figure. */
+.pace {
+  color: var(--ink-muted);
+}
+
+.figures {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* Beside the percentage rather than under it: what she is spending, and how fast, read together. */
+.rate {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
 .meters {
   display: flex;
   align-items: center;

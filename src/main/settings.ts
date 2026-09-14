@@ -12,6 +12,11 @@ export interface Settings {
    * repository opened for the first time appears on its own rather than waiting to be allowed.
    */
   hidden: string[]
+  /**
+   * The repositories in the order she dragged them into in the settings. Only the ones she has
+   * moved: a name missing here has never been arranged and sorts after those that have.
+   */
+  projectOrder: string[]
 }
 
 function file(): string {
@@ -26,12 +31,17 @@ export function settings(): Settings {
     const hidden = Array.isArray(kept.hidden)
       ? kept.hidden.filter((one) => typeof one === 'string')
       : []
-    if (kept.locale === 'en' || kept.locale === 'cs') return { locale: kept.locale, hidden }
-    return { locale: localeOf(app.getLocale()), hidden }
+    const projectOrder = Array.isArray(kept.projectOrder)
+      ? kept.projectOrder.filter((one) => typeof one === 'string')
+      : []
+    if (kept.locale === 'en' || kept.locale === 'cs') {
+      return { locale: kept.locale, hidden, projectOrder }
+    }
+    return { locale: localeOf(app.getLocale()), hidden, projectOrder }
   } catch {
     // No file yet, or one nobody can read. Either way the system is what to open in.
   }
-  return { locale: localeOf(app.getLocale()), hidden: [] }
+  return { locale: localeOf(app.getLocale()), hidden: [], projectOrder: [] }
 }
 
 export function saveSettings(patch: Partial<Settings>): void {

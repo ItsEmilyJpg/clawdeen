@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
-import { hiddenTally, visible } from '../../shared/projects'
+import { hiddenTally, movedProject, visible } from '../../shared/projects'
 import type { Board, Locale, ProjectMark, Session, StateWord, ThemeMode } from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
@@ -13,6 +13,7 @@ import {
   inWords,
   LANE_WORDS,
   laneRows,
+  refreshVerdict,
   say,
   setLocale,
   stateWord,
@@ -30,6 +31,7 @@ const board = ref<Board>({
   at: 0,
   locale: 'en',
   projects: [],
+  projectOrder: [],
   hidden: []
 })
 /** Set while she is looking behind the filter, so a glance costs nothing and settles nothing. */
@@ -43,7 +45,10 @@ const opened = ref<{ id: string; left: number; top: number } | null>(null)
 const field = ref<HTMLInputElement | null>(null)
 /** Seconds on the clock: a choice like the others, and it outlives the window like the others. */
 const ticking = ref(remembered('ticking') === '1')
-/** One rule for the whole board: compact by default, everything spelled out when expanded. */
+/**
+ * Whether the header spells the usage windows out. It used to unfold the cards as well, and an
+ * unfolded card said nothing a row does not: the same words, over three lines instead of one.
+ */
 const expanded = ref(remembered('expanded') === '1')
 /**
  * Two ways to read the same board: the order she arranged, or the workflow the states make. The
@@ -69,6 +74,41 @@ function projectMark(kept: string | null): ProjectMark {
 }
 
 const project = ref<ProjectMark>(projectMark(remembered('project')))
+/**
+ * Which columns a row draws. Every one of them is on until she switches it off, because a board
+ * that hides something by default hides it from someone who never learns it was there.
+ *
+ * They are kept in the page rather than with the repositories: what a row shows is about this
+ * window, and the tray and the notifications have no columns to speak of.
+ */
+const COLUMN_KEYS = ['tags', 'doing', 'state', 'meta'] as const
+type ColumnKey = (typeof COLUMN_KEYS)[number]
+const COLUMN_LABELS = {
+  tags: 'columnTags',
+  doing: 'columnDoing',
+  state: 'columnState',
+  meta: 'columnMeta'
+} as const
+const columns = ref<ColumnKey[]>(COLUMN_KEYS.filter((key) => remembered(`column-${key}`) !== '0'))
+const columnRow = computed(() =>
+  COLUMN_KEYS.map((key) => ({
+    key,
+    label: say(COLUMN_LABELS[key]),
+    on: columns.value.includes(key)
+  }))
+)
+
+function showColumn(key: ColumnKey, on: boolean): void {
+  columns.value = on
+    ? [...COLUMN_KEYS.filter((one) => one === key || columns.value.includes(one))]
+    : columns.value.filter((one) => one !== key)
+  keep(`column-${key}`, on)
+}
+
+/** The classes a switched-off column leaves on the list, which is where the grid reads them. */
+const columnClass = computed(() =>
+  COLUMN_KEYS.filter((key) => !columns.value.includes(key)).map((key) => `no-${key}`)
+)
 const THEME_VALUES: ThemeMode[] = ['system', 'light', 'dark']
 const THEME_KEYS = { system: 'choiceSystem', light: 'choiceLight', dark: 'choiceDark' } as const
 const themes = computed(() =>
@@ -126,7 +166,7 @@ const lanes = computed(() =>
         .filter((session) =>
           lane.word ? session.activity === lane.word : !LANED.has(session.activity)
         )
-        .sort(inLane(board.value.order))
+        .sort(inLane(board.value.order, board.value.projectOrder))
     }))
     .filter((lane) => lane.sessions.length > 0)
 )
@@ -188,6 +228,25 @@ function showProject(project: string, shown: boolean): void {
   void window.api.hide(project, shown)
 }
 
+/** Which repository is being dragged in the settings, so the one under the hand can say so. */
+const heldProject = ref<string | null>(null)
+
+/**
+ * Dropping one repository onto another writes the whole list, and the lanes read the same list.
+ *
+ * The board is moved here rather than waited for: the main process answers with a new one, but a
+ * menu that only reorders once the disk has replied feels like it did not take the drag.
+ */
+function dropProject(onto: string): void {
+  const held = heldProject.value
+  heldProject.value = null
+  if (!held || held === onto) return
+  const names = movedProject(board.value.projects, held, onto)
+  if (names === board.value.projects) return
+  board.value = { ...board.value, projects: names, projectOrder: names }
+  void window.api.projects(names)
+}
+
 // Before the first paint rather than on mount: a window that starts light and turns dark a frame
 // later is worse than either.
 paint(theme.value)
@@ -213,6 +272,28 @@ function outside(event: MouseEvent): void {
   const target = event.target as Node | null
   if (target && !cog.value?.contains(target)) settings.value = false
 }
+
+/**
+ * The wall clock, ticking on its own rather than with the board.
+ *
+ * A board that has stopped being read stops sending anything at all, so nothing else on the page
+ * would move again either: the moment it printed would sit there looking current. This is what
+ * lets the window notice the silence.
+ */
+const now = ref(Date.now() / 1000)
+let clockTick: ReturnType<typeof setInterval> | null = null
+
+/** Green while the board is being swept, amber once a sweep has been missed, red when they stop. */
+const pulse = computed(() => (board.value.at ? refreshVerdict(board.value.at, now.value) : ''))
+
+const PULSE_KEYS = { ok: 'pulseLive', warn: 'pulseSlow', danger: 'pulseDead' } as const
+
+/** What the time says when it is asked: when it was read, and whether it is still being read. */
+const stampTitle = computed(() => {
+  const seconds = say('secondsTitle')
+  if (!pulse.value) return seconds
+  return `${say(PULSE_KEYS[pulse.value], inWords(now.value - board.value.at))} · ${seconds}`
+})
 
 function wordsOf(session: Session): StateWord[] {
   return session.activity ? [session.activity, session.state] : [session.state]
@@ -319,6 +400,9 @@ function onKey(event: KeyboardEvent): void {
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
   window.addEventListener('click', outside)
+  // Five seconds: the colour it decides only changes at 45 and 90, so this is as often as it can
+  // matter, and the page redraws one dot rather than a board.
+  clockTick = setInterval(() => (now.value = Date.now() / 1000), 5000)
   const first = await window.api.board()
   // The language comes with the board: the page keeps no settings of its own, and every word it
   // draws is looked up at render time, so setting it before the assignment is what the view sees.
@@ -327,12 +411,15 @@ onMounted(async () => {
   stop = window.api.onBoard((next) => {
     setLocale(next.locale)
     board.value = next
+    // A board that has just arrived is green this instant, not at the next tick of the clock.
+    now.value = Date.now() / 1000
   })
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('click', outside)
+  if (clockTick) clearInterval(clockTick)
   stop?.()
 })
 </script>
@@ -345,7 +432,10 @@ onUnmounted(() => {
       <!-- One group, so a window too narrow for the bar wraps the whole of it rather than
            stranding the cog on a row of its own. -->
       <div class="tools">
-        <button class="stamp" :title="say('secondsTitle')" @click="tick(!ticking)">
+        <!-- The dot of a card, on the one number that says when all the others were read: green
+             while the board is still being swept, red once it has stopped. -->
+        <button class="stamp" :title="stampTitle" @click="tick(!ticking)">
+          <span v-if="pulse" :class="['pulse', pulse]" />
           {{ board.at ? say('lastAt', clock(board.at, ticking)) : say('loading') }}
         </button>
         <button class="wider" :title="expanded ? say('narrow') : say('widen')" @click="wide()">
@@ -375,14 +465,38 @@ onUnmounted(() => {
 
             <div v-if="board.projects.length > 1" class="row stacked">
               <span class="label">{{ say('groupProjects') }}</span>
-              <div class="projects">
+              <!-- A click switches a repository off, a drag moves it: the same button does both, so
+                   the order she reads them in is the order the lanes put their cards in. -->
+              <div class="projects" :title="say('dragProjects')">
                 <button
                   v-for="name in board.projects"
                   :key="name"
-                  :class="['seg-item', { on: !board.hidden.includes(name) }]"
+                  :class="[
+                    'seg-item',
+                    { on: !board.hidden.includes(name), dragging: heldProject === name }
+                  ]"
+                  draggable="true"
                   @click="showProject(name, board.hidden.includes(name))"
+                  @dragstart="heldProject = name"
+                  @dragend="heldProject = null"
+                  @dragover.prevent
+                  @drop.prevent="dropProject(name)"
                 >
                   {{ name }}
+                </button>
+              </div>
+            </div>
+
+            <div class="row stacked">
+              <span class="label">{{ say('groupColumns') }}</span>
+              <div class="projects">
+                <button
+                  v-for="column in columnRow"
+                  :key="column.key"
+                  :class="['seg-item', { on: column.on }]"
+                  @click="showColumn(column.key, !column.on)"
+                >
+                  {{ column.label }}
                 </button>
               </div>
             </div>
@@ -528,7 +642,7 @@ onUnmounted(() => {
         <h2 :class="lane.word ? STATE_CLASS[lane.word] : ''">
           {{ lane.title }} <b>{{ lane.sessions.length }}</b>
         </h2>
-        <ul :class="['sessions', expanded ? 'expanded' : 'compact']">
+        <ul :class="['sessions', 'compact', columnClass]">
           <SessionCard
             v-for="session in lane.sessions"
             :key="session.id"
@@ -545,7 +659,7 @@ onUnmounted(() => {
       <p v-if="lanes.length === 0" class="empty">{{ say('nothingMatches') }}</p>
     </template>
 
-    <ul v-else :class="['sessions', expanded ? 'expanded' : 'compact']">
+    <ul v-else :class="['sessions', 'compact', columnClass]">
       <SessionCard
         v-for="session in shown"
         :key="session.id"
@@ -634,6 +748,29 @@ h1 {
   white-space: nowrap;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The same dot a card carries, at the size the header can hold. */
+.pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  flex: none;
+}
+
+.pulse.ok {
+  background: var(--ok);
+}
+
+.pulse.warn {
+  background: var(--warn);
+}
+
+.pulse.danger {
+  background: var(--danger);
 }
 
 .today {
@@ -844,6 +981,11 @@ h1 {
   padding: 2px;
   background: var(--hover);
   border-radius: 8px;
+}
+
+/* The same half opacity a dragged card carries, so the two drags read as the one gesture. */
+.projects .seg-item.dragging {
+  opacity: 0.5;
 }
 
 /* Amber only while something waits behind the filter: the rest of the time it is a quiet count. */

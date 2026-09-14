@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, appendFileSy
 import { homedir, tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 
-import { lastTurn, pendingWork, touchedPaths, watchedFor } from '../src/main/transcripts'
+import { lastCall, lastTurn, pendingWork, touchedPaths, watchedFor } from '../src/main/transcripts'
 
 const rubbish: string[] = []
 
@@ -94,6 +94,60 @@ describe('lastTurn', () => {
       }
     ])
     await expect(lastTurn(path)).resolves.toBe('ended')
+  })
+})
+
+describe('lastCall', () => {
+  it('names the tool the session is on and what it is on', async () => {
+    const path = transcript([
+      said(
+        'assistant',
+        [{ type: 'tool_use', name: 'Read', input: { file_path: '/a/one.ts' } }],
+        'tool_use'
+      )
+    ])
+    await expect(lastCall(path)).resolves.toEqual({ name: 'Read', about: '/a/one.ts' })
+  })
+
+  it('takes the last call rather than the first one it ever made', async () => {
+    const path = transcript([
+      said(
+        'assistant',
+        [{ type: 'tool_use', name: 'Read', input: { file_path: '/a/one.ts' } }],
+        'tool_use'
+      ),
+      said(
+        'assistant',
+        [{ type: 'tool_use', name: 'Bash', input: { command: 'npm run check' } }],
+        'tool_use'
+      )
+    ])
+    await expect(lastCall(path)).resolves.toEqual({ name: 'Bash', about: 'npm run check' })
+  })
+
+  /** A subagent's call is its own work: a row that named it would say the session is somewhere it is not. */
+  it('reads the main thread and not an agent of its own', async () => {
+    const path = transcript([
+      said(
+        'assistant',
+        [{ type: 'tool_use', name: 'Task', input: { description: 'find it' } }],
+        'tool_use'
+      ),
+      {
+        ...(said(
+          'assistant',
+          [{ type: 'tool_use', name: 'Grep', input: { pattern: 'x' } }],
+          'tool_use'
+        ) as object),
+        isSidechain: true
+      }
+    ])
+    await expect(lastCall(path)).resolves.toEqual({ name: 'Task', about: 'find it' })
+  })
+
+  it('has nothing to say where the session only wrote words', async () => {
+    const path = transcript([said('assistant', [{ type: 'text', text: 'hotovo' }], 'end_turn')])
+    await expect(lastCall(path)).resolves.toBeNull()
   })
 })
 

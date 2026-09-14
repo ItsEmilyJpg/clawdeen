@@ -261,6 +261,18 @@ interface Phrases {
   usageStatus: string
   usageEmpty: string
   groupProjects: string
+  dragProjects: string
+  pulseLive: string
+  pulseSlow: string
+  pulseDead: string
+  cardActions: string
+  actionDetail: string
+  actionChat: string
+  groupColumns: string
+  columnTags: string
+  columnDoing: string
+  columnState: string
+  columnMeta: string
   hiddenCount: string
   hiddenWaiting: string
   showingAll: string
@@ -396,6 +408,18 @@ const PHRASES: Record<Locale, Phrases> = {
     usageStatus: 'usage answered {n}',
     usageEmpty: 'usage returned no window',
     groupProjects: 'Projects',
+    dragProjects: 'Click to switch a repository off, drag to put it where you want it',
+    pulseLive: 'read {n} ago, still being read',
+    pulseSlow: 'read {n} ago, a sweep has been missed',
+    pulseDead: 'read {n} ago and not since: what stands here is old',
+    cardActions: 'What can be done with this session',
+    actionDetail: 'Details',
+    actionChat: 'Chat',
+    groupColumns: 'Columns',
+    columnTags: 'issue and PR',
+    columnDoing: 'what it is on',
+    columnState: 'state',
+    columnMeta: 'where and when',
     hiddenCount: '{n} hidden',
     hiddenWaiting: '{n} waiting',
     showingAll: 'showing all'
@@ -529,6 +553,18 @@ const PHRASES: Record<Locale, Phrases> = {
     usageStatus: 'usage odpovědělo {n}',
     usageEmpty: 'usage nevrátilo žádné okno',
     groupProjects: 'Projekty',
+    dragProjects: 'Kliknutím repozitář vypneš, přetažením ho přesuneš',
+    pulseLive: 'načteno před {n}, čte se dál',
+    pulseSlow: 'načteno před {n}, jedno čtení vypadlo',
+    pulseDead: 'načteno před {n} a od té doby ne: co je tu vidět, je staré',
+    cardActions: 'Co se dá s touhle session dělat',
+    actionDetail: 'Detail',
+    actionChat: 'Chat',
+    groupColumns: 'Sloupce',
+    columnTags: 'issue a PR',
+    columnDoing: 'na čem dělá',
+    columnState: 'stav',
+    columnMeta: 'kde a kdy',
     hiddenCount: 'skrytých {n}',
     hiddenWaiting: '{n} čeká',
     showingAll: 'zobrazeno vše'

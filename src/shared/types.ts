@@ -106,6 +106,12 @@ export interface Session {
   /** When the task it is waiting on started, so a row can say a long one has been on too long. */
   since: number | null
   /**
+   * The tool the session is on right now and what it is on, so the row says what it is doing rather
+   * than only that it is. Filled only while the session is working: a call read off a turn that has
+   * ended is what the session did, not what it is doing, and the row must not say the one for the other.
+   */
+  action: Call | null
+  /**
    * When the session entered the state it is in, read off the stretch history, so a lane can hold
    * its order while the cards in it keep working. Null where the session is doing nothing.
    */
@@ -164,8 +170,16 @@ export interface Board {
   at: number
   /** The language the window draws in. The renderer reads no settings of its own. */
   locale: Locale
-  /** Every repository seen in the window, so the settings can offer them without parsing labels. */
+  /**
+   * Every repository seen in the window, so the settings can offer them without parsing labels.
+   * Already in the order she arranged them in, with the ones she never moved behind it.
+   */
   projects: string[]
+  /**
+   * The repositories she dragged into an order of her own, which is also what the cards inside a
+   * lane sort by. Empty until she drags one, and a lane then sorts exactly as it did before.
+   */
+  projectOrder: string[]
   /**
    * The repositories the window does not draw. Kept as what is hidden rather than what is shown, so
    * a repository opened for the first time appears on its own instead of waiting to be allowed.

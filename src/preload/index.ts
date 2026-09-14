@@ -14,6 +14,8 @@ const api = {
   // Which repositories the board draws; the count in the tray is not affected by it on purpose.
   hide: (project: string, shown: boolean): Promise<void> =>
     ipcRenderer.invoke('hide', project, shown),
+  // The order she dragged the repositories into, which the settings list and the lanes both read.
+  projects: (names: string[]): Promise<void> => ipcRenderer.invoke('projects', names),
   order: (ids: string[]): Promise<void> => ipcRenderer.invoke('order', ids),
   chat: (cli: string): Promise<Line[]> => ipcRenderer.invoke('chat', cli),
   onBoard: (listen: (board: Board) => void): (() => void) => {

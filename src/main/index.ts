@@ -461,6 +461,12 @@ void app.whenReady().then(() => {
     saveSettings({ hidden: withProject(settings().hidden, project, shown) })
     await refresh()
   })
+  // The whole list as she arranged it, not the one name that moved: the page already knows where
+  // every repository sits, and a list written whole cannot drift from what it draws.
+  ipcMain.handle('projects', async (_event, names: string[]) => {
+    saveSettings({ projectOrder: names })
+    await refresh()
+  })
   ipcMain.handle('locale', async (_event, next: Locale) => {
     saveSettings({ locale: next })
     setLocale(next)

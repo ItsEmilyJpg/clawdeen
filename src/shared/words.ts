@@ -59,6 +59,27 @@ export function burnOf(used: number, left: number, minutes: number): number | nu
   return ((100 - used) / used) * elapsed
 }
 
+/**
+ * How long ago the board was read before the reading stops being one: the sweep is every 15
+ * seconds, so a board older than three of them has missed a sweep and one older than six has
+ * stopped being swept at all. Those are the two moments worth a colour.
+ */
+const SWEPT = 45
+const UNSWEPT = 90
+
+/**
+ * Whether the board in front of her is still being read, as one of the three colours the cards use.
+ *
+ * A time printed on a window that has stopped refreshing looks exactly like a time printed on one
+ * that is: both say a moment that was true once. Every other number here is a reading taken now, so
+ * the one that says when the reading was taken has to say whether it is still being taken.
+ */
+export function refreshVerdict(at: number, now: number): 'ok' | 'warn' | 'danger' {
+  const age = now - at
+  if (age <= SWEPT) return 'ok'
+  return age <= UNSWEPT ? 'warn' : 'danger'
+}
+
 /** Green while the window outlives the reset, amber just short of it, red when it runs out first. */
 export function burnVerdict(burn: number | null, left: number): 'ok' | 'warn' | 'danger' {
   if (burn === null) return 'ok'

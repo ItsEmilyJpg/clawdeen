@@ -35,6 +35,45 @@ export function hiddenTally(
   }
 }
 
+/**
+ * The repositories in the order she dragged them into, with the rest behind them as they came.
+ *
+ * A name she has never moved has no place in the stored order, and guessing one would move a
+ * repository she never touched. So it keeps the alphabetical order it arrived in, after everything
+ * she did arrange, and the first drag is what puts it anywhere else.
+ */
+export function ordered(projects: string[], order: string[]): string[] {
+  if (order.length === 0) return projects
+  const at = new Map(order.map((name, index) => [name, index]))
+  return [...projects].sort(
+    (one, other) =>
+      (at.get(one) ?? Number.MAX_SAFE_INTEGER) - (at.get(other) ?? Number.MAX_SAFE_INTEGER)
+  )
+}
+
+/** Dropping one repository onto another, as the whole order the settings then keep. */
+export function movedProject(projects: string[], held: string, onto: string): string[] {
+  const names = [...projects]
+  const from = names.indexOf(held)
+  const to = names.indexOf(onto)
+  if (from === -1 || to === -1 || from === to) return projects
+  names.splice(to, 0, ...names.splice(from, 1))
+  return names
+}
+
+/**
+ * Where a session's repository sits in that order, for sorting cards by it.
+ *
+ * Nothing arranged means nothing to say: the comparator is flat until she has dragged a repository,
+ * so a board nobody has touched sorts exactly as it did before this existed.
+ */
+export function byProject(order: string[]): (one: string, other: string) => number {
+  if (order.length === 0) return () => 0
+  const at = new Map(order.map((name, index) => [name, index]))
+  return (one, other) =>
+    (at.get(one) ?? Number.MAX_SAFE_INTEGER) - (at.get(other) ?? Number.MAX_SAFE_INTEGER)
+}
+
 /** Switching one repository off, or back on, as the stored list of hidden ones. */
 export function withProject(hidden: string[], project: string, shown: boolean): string[] {
   const off = new Set(hidden)
