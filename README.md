@@ -16,12 +16,13 @@ Everything is local. Nothing is sent anywhere, and the only network calls are th
 | `~/.claude/projects/*/<cli session>.jsonl`                                         | what the session is doing: a tool still running, a question nobody answered, a turn that ended; and which working copy its own commands name, which is where the repository is read from when the session was opened somewhere else |
 | `/tmp/claude-<uid>/*/<cli session>/tasks/*.output`                                 | whether a backgrounded command, monitor or agent is still going                                                                                                                                                                     |
 | `gh`, `glab`, `git remote`                                                         | the pull request, its checks, conflicts and review                                                                                                                                                                                  |
-| `~/.cache/terminal-welcome/claude-usage.json`                                      | the five hour and seven day windows                                                                                                                                                                                                 |
+| `api.anthropic.com/api/oauth/usage`, with the token Claude Code keeps in the Keychain | the five hour and seven day windows. The token is read, never renewed: renewing it rotates the refresh token and would log the CLI out. An expired one leaves the windows on the last reading, with its age said out loud |
 
 ## What it keeps
 
 Its own data lives in the application's `userData` directory and nothing else is written anywhere:
-`order.json` for the order cards were dragged into, `window.json` for where the window was, and
+`order.json` for the order cards were dragged into, `window.json` for where the window was,
+`usage.json` for the last reading of the windows that came back, and
 `history.db`, a SQLite with one row per stretch of a state. The database is opened with Node's own
 `node:sqlite`, which is why this carries no native dependency; Node still calls it experimental and
 says so on every start.
