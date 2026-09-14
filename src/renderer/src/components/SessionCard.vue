@@ -29,8 +29,28 @@ const emit = defineEmits<{
 }>()
 
 const APP_SESSION = 'claude://code/continue?session='
+/** Whether this row's menu is open. One row's menu at a time, because a click closes every other. */
+const acting = ref(false)
+
+/**
+ * The two controls used to sit on every row as two buttons, and the width they reserved was taken
+ * off the name on every row whether she wanted them or not. They are one dot of a button now, and
+ * what they were is in the menu behind it.
+ */
+function act(what: 'detail' | 'chat', event: MouseEvent): void {
+  acting.value = false
+  if (what === 'chat') return emit('peek')
+  expand(event)
+}
+
+/** A menu open on a row that is being redrawn under her is a menu on the wrong row. */
+function shut(): void {
+  acting.value = false
+}
 const FAILED_SHOWN = 3
 const TOO_LONG = 600
+/** How much of a call fits beside the rest of a row before it pushes everything else off it. */
+const ACTION_LONGEST = 32
 const CARRIED = new Set(['merged', 'closed', 'open', 'draft'])
 
 /**
@@ -61,6 +81,23 @@ const named = computed(() => {
   ]
 })
 
+/**
+ * What a call was on, at the width of a chip.
+ *
+ * A path is cut from the front and a command from the back, because that is where each of them
+ * carries what it is: every worktree on this machine starts with the same forty characters of
+ * `/Users/…`, and a command says what it does in its first word.
+ */
+function shortened(about: string): string {
+  const path = about.startsWith('/') || about.startsWith('~')
+  if (path) {
+    const parts = about.split('/').filter(Boolean)
+    const tail = parts.slice(-2).join('/')
+    return tail.length > ACTION_LONGEST ? `…${tail.slice(-ACTION_LONGEST)}` : `…/${tail}`
+  }
+  return about.length > ACTION_LONGEST ? `${about.slice(0, ACTION_LONGEST)}…` : about
+}
+
 /** Where the session and its change stand: the column on the right, or the tail of the one line. */
 const standing = computed(() => {
   const session = props.session
@@ -80,6 +117,12 @@ const standing = computed(() => {
     if (!props.laned || label !== word) {
       rows.push({ label, kind: STATE_CLASS[session.activity] + hot })
     }
+  }
+  // What it is on this second. The lane and the dot both say that the session is working; only this
+  // says what it is working on, and it is here only while that is true of right now.
+  if (session.action) {
+    const about = shortened(session.action.about)
+    rows.push({ label: [session.action.name, about].filter(Boolean).join(' · '), kind: 'doing' })
   }
   if (session.extra) {
     rows.push({ label: stateWord(session.extra), kind: STATE_CLASS[session.extra] })
@@ -153,7 +196,9 @@ function open(url: string): void {
         active: session.active,
         pinned: session.pinned,
         focused: markFocus && session.focused,
-        dragging
+        dragging,
+        // A row with its menu open has to sit above the row under it, or the menu opens behind it.
+        acting
       }
     ]"
     ref="card"
@@ -204,9 +249,16 @@ function open(url: string): void {
       </div>
       <div class="meta">{{ session.place }} · {{ ago(session.last) }}</div>
     </div>
-    <div class="acts">
-      <button class="act" :title="say('cardDetail')" @click.stop="expand">detail</button>
-      <button class="act" :title="say('readChat')" @click.stop="emit('peek')">chat</button>
+    <div class="acts" @mouseleave="shut()">
+      <button class="act dots" :title="say('cardActions')" @click.stop="acting = !acting">⋮</button>
+      <div v-if="acting" class="actions">
+        <button class="action" :title="say('cardDetail')" @click.stop="act('detail', $event)">
+          {{ say('actionDetail') }}
+        </button>
+        <button class="action" :title="say('readChat')" @click.stop="act('chat', $event)">
+          {{ say('actionChat') }}
+        </button>
+      </div>
     </div>
   </li>
 </template>
@@ -323,6 +375,12 @@ function open(url: string): void {
   opacity: 0.5;
 }
 
+/* Every row is positioned, so the one below is painted over the one above unless this says otherwise.
+   Measured in the running window: the menu opened underneath the next card. */
+.card.acting {
+  z-index: 5;
+}
+
 /* The whole card opens the session; the labels sit above it and keep their own links. */
 .open {
   position: absolute;
@@ -415,6 +473,47 @@ function open(url: string): void {
   color: var(--accent);
 }
 
+.act.dots {
+  padding: 2px 7px;
+  line-height: 1;
+}
+
+/* The menu hangs under the dots and over the row below, which is why it carries the card's shadow. */
+.actions {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 132px;
+  padding: 4px;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  pointer-events: auto;
+}
+
+.action {
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--hover);
+  color: var(--accent);
+}
+
 .card:hover .acts,
 .acts:focus-within {
   opacity: 1;
@@ -427,10 +526,36 @@ function open(url: string): void {
  */
 .sessions.compact .card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px minmax(0, 260px) minmax(0, 170px);
+  /* Each column is a variable so a row she has switched off collapses to nothing and the name
+     takes the width back, rather than leaving a hole the grid still reserves. */
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--col-tags, 150px)
+    var(--col-state, minmax(0, 260px))
+    var(--col-meta, minmax(0, 170px));
   align-items: center;
   column-gap: 14px;
-  padding: 8px 104px 8px 30px;
+  padding: 8px 46px 8px 30px;
+}
+
+/* What she has switched off in the settings: the column goes, and its width with it. */
+.sessions.no-tags {
+  --col-tags: 0px;
+}
+
+.sessions.no-state {
+  --col-state: 0px;
+}
+
+.sessions.no-meta {
+  --col-meta: 0px;
+}
+
+.sessions.no-tags .left .chips,
+.sessions.no-state .right .chips,
+.sessions.no-meta .meta,
+.sessions.no-doing .chip.doing {
+  display: none;
 }
 
 .sessions.compact .card::before {
@@ -493,7 +618,7 @@ function open(url: string): void {
  */
 @media (max-width: 1000px) {
   .sessions.compact .card {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 240px);
+    grid-template-columns: minmax(0, 1fr) var(--col-tags, auto) var(--col-state, minmax(0, 240px));
   }
 
   .sessions.compact .meta,
@@ -504,7 +629,7 @@ function open(url: string): void {
 
 @media (max-width: 680px) {
   .sessions.compact .card {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 240px);
+    grid-template-columns: minmax(0, 1fr) var(--col-state, minmax(0, 240px));
   }
 
   .sessions.compact .left .chips {
@@ -514,7 +639,7 @@ function open(url: string): void {
 
 @media (max-width: 560px) {
   .sessions.compact .card {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) var(--col-state, auto);
   }
 
   /* The state is allowed under half the row and not a pixel more; the rest is the name. */
@@ -531,61 +656,5 @@ function open(url: string): void {
   .sessions.compact .acts {
     display: none;
   }
-}
-
-/* Expanded: the same card with the states in a column of their own, which reads down the board. */
-.sessions.expanded .card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  column-gap: 16px;
-  align-items: start;
-  border-radius: 12px;
-  /* The strip on the right is the controls', so the states column never runs underneath them. */
-  padding: 12px 114px 12px 34px;
-}
-
-.sessions.expanded .card::before {
-  left: 14px;
-  top: 18px;
-}
-
-.sessions.expanded .card.pinned,
-.sessions.expanded .card.s-waiting {
-  padding-left: 32px;
-}
-
-.sessions.expanded .open {
-  border-radius: 12px;
-}
-
-.sessions.expanded .title {
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-
-/* Expanded has room for the issue as a label of its own, which is a link as well as a number. */
-.sessions.expanded .number {
-  display: none;
-}
-
-.sessions.expanded .left .chips {
-  margin-top: 6px;
-}
-
-.sessions.expanded .right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-  text-align: right;
-}
-
-.sessions.expanded .right .chips {
-  justify-content: flex-end;
-}
-
-.sessions.expanded .acts {
-  top: 10px;
-  right: 10px;
 }
 </style>

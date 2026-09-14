@@ -28,6 +28,7 @@ function session(over: Partial<Session> = {}): Session {
     extra: null,
     about: null,
     since: null,
+    action: null,
     entered: null,
     heard: null,
     pinned: false,

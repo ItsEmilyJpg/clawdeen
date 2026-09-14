@@ -12,6 +12,7 @@ import { record, standing, today } from './history'
 import { liveAt, liveState } from './live'
 import { order } from './order'
 import {
+  lastCall,
   lastTurn,
   modified,
   pendingWork,
@@ -310,6 +311,9 @@ async function describe(
         ? ((await watchedFor(path))?.about ?? null)
         : null,
     since: doing.since,
+    // Only where the session is working: every other state is a wait, and the tool it stopped on
+    // says nothing about what it is waiting for.
+    action: word === 'working' && path ? await lastCall(path) : null,
     // Filled in by board() from the stretch history, which describing one session cannot see.
     entered: null,
     pinned: Boolean(record.isStarred),

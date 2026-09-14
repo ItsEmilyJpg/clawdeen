@@ -45,7 +45,10 @@ const opened = ref<{ id: string; left: number; top: number } | null>(null)
 const field = ref<HTMLInputElement | null>(null)
 /** Seconds on the clock: a choice like the others, and it outlives the window like the others. */
 const ticking = ref(remembered('ticking') === '1')
-/** One rule for the whole board: compact by default, everything spelled out when expanded. */
+/**
+ * Whether the header spells the usage windows out. It used to unfold the cards as well, and an
+ * unfolded card said nothing a row does not: the same words, over three lines instead of one.
+ */
 const expanded = ref(remembered('expanded') === '1')
 /**
  * Two ways to read the same board: the order she arranged, or the workflow the states make. The
@@ -71,6 +74,41 @@ function projectMark(kept: string | null): ProjectMark {
 }
 
 const project = ref<ProjectMark>(projectMark(remembered('project')))
+/**
+ * Which columns a row draws. Every one of them is on until she switches it off, because a board
+ * that hides something by default hides it from someone who never learns it was there.
+ *
+ * They are kept in the page rather than with the repositories: what a row shows is about this
+ * window, and the tray and the notifications have no columns to speak of.
+ */
+const COLUMN_KEYS = ['tags', 'doing', 'state', 'meta'] as const
+type ColumnKey = (typeof COLUMN_KEYS)[number]
+const COLUMN_LABELS = {
+  tags: 'columnTags',
+  doing: 'columnDoing',
+  state: 'columnState',
+  meta: 'columnMeta'
+} as const
+const columns = ref<ColumnKey[]>(COLUMN_KEYS.filter((key) => remembered(`column-${key}`) !== '0'))
+const columnRow = computed(() =>
+  COLUMN_KEYS.map((key) => ({
+    key,
+    label: say(COLUMN_LABELS[key]),
+    on: columns.value.includes(key)
+  }))
+)
+
+function showColumn(key: ColumnKey, on: boolean): void {
+  columns.value = on
+    ? [...COLUMN_KEYS.filter((one) => one === key || columns.value.includes(one))]
+    : columns.value.filter((one) => one !== key)
+  keep(`column-${key}`, on)
+}
+
+/** The classes a switched-off column leaves on the list, which is where the grid reads them. */
+const columnClass = computed(() =>
+  COLUMN_KEYS.filter((key) => !columns.value.includes(key)).map((key) => `no-${key}`)
+)
 const THEME_VALUES: ThemeMode[] = ['system', 'light', 'dark']
 const THEME_KEYS = { system: 'choiceSystem', light: 'choiceLight', dark: 'choiceDark' } as const
 const themes = computed(() =>
@@ -449,6 +487,20 @@ onUnmounted(() => {
               </div>
             </div>
 
+            <div class="row stacked">
+              <span class="label">{{ say('groupColumns') }}</span>
+              <div class="projects">
+                <button
+                  v-for="column in columnRow"
+                  :key="column.key"
+                  :class="['seg-item', { on: column.on }]"
+                  @click="showColumn(column.key, !column.on)"
+                >
+                  {{ column.label }}
+                </button>
+              </div>
+            </div>
+
             <div class="row">
               <span class="label">{{ say('groupProject') }}</span>
               <div class="seg">
@@ -590,7 +642,7 @@ onUnmounted(() => {
         <h2 :class="lane.word ? STATE_CLASS[lane.word] : ''">
           {{ lane.title }} <b>{{ lane.sessions.length }}</b>
         </h2>
-        <ul :class="['sessions', expanded ? 'expanded' : 'compact']">
+        <ul :class="['sessions', 'compact', columnClass]">
           <SessionCard
             v-for="session in lane.sessions"
             :key="session.id"
@@ -607,7 +659,7 @@ onUnmounted(() => {
       <p v-if="lanes.length === 0" class="empty">{{ say('nothingMatches') }}</p>
     </template>
 
-    <ul v-else :class="['sessions', expanded ? 'expanded' : 'compact']">
+    <ul v-else :class="['sessions', 'compact', columnClass]">
       <SessionCard
         v-for="session in shown"
         :key="session.id"

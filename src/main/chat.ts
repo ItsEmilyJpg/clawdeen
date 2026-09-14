@@ -47,7 +47,7 @@ function textOf(content: Part[] | string | undefined): string {
 const ABOUT = ['command', 'file_path', 'description', 'query', 'pattern', 'path', 'title', 'skill']
 const ABOUT_LONGEST = 140
 
-function aboutOf(input: { [key: string]: unknown } | undefined): string {
+export function aboutOf(input: { [key: string]: unknown } | undefined): string {
   for (const key of ABOUT) {
     const value = input?.[key]
     if (typeof value !== 'string' || !value.trim()) continue

@@ -348,6 +348,7 @@ describe('inLane', () => {
       extra: null,
       about: null,
       since: null,
+      action: null,
       entered: 1789219000,
       heard: null,
       pinned: false,

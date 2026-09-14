@@ -106,6 +106,12 @@ export interface Session {
   /** When the task it is waiting on started, so a row can say a long one has been on too long. */
   since: number | null
   /**
+   * The tool the session is on right now and what it is on, so the row says what it is doing rather
+   * than only that it is. Filled only while the session is working: a call read off a turn that has
+   * ended is what the session did, not what it is doing, and the row must not say the one for the other.
+   */
+  action: Call | null
+  /**
    * When the session entered the state it is in, read off the stretch history, so a lane can hold
    * its order while the cards in it keep working. Null where the session is doing nothing.
    */

@@ -3,6 +3,8 @@ import { homedir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { glob } from 'node:fs/promises'
 
+import type { Call } from '../shared/types'
+import { aboutOf } from './chat'
 import { TASKS, TRANSCRIPTS } from './paths'
 
 /**
@@ -64,7 +66,7 @@ interface Part {
   id?: string
   tool_use_id?: string
   content?: unknown
-  input?: { command?: unknown }
+  input?: { [key: string]: unknown }
 }
 
 interface Entry {
@@ -115,6 +117,31 @@ export async function lastTurn(path: string): Promise<Turn> {
     return names.some((name) => WAITING_TOOLS.has(name)) ? 'blocked' : 'running'
   }
   return 'ended'
+}
+
+/**
+ * The tool the session called last and what it called it on, or nothing where the last thing it
+ * wrote was words.
+ *
+ * It is read off the main thread only: a subagent's calls are its own work, and a row that named
+ * them would say the session is reading a file it has never opened. The card only ever draws this
+ * for a session that is working right now, because a call sitting in a finished turn is history.
+ */
+export async function lastCall(path: string): Promise<Call | null> {
+  const lines = (await tail(path)).split('\n')
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    let entry: Entry
+    try {
+      entry = JSON.parse(lines[index]) as Entry
+    } catch {
+      continue
+    }
+    if (entry.isSidechain || entry.type !== 'assistant') continue
+    const call = parts(entry).find((part) => part?.type === 'tool_use' && part?.name)
+    if (!call?.name) continue
+    return { name: call.name, about: aboutOf(call.input) }
+  }
+  return null
 }
 
 /** Whether the session ever backgrounded anything, which a monitor that has printed nothing has. */
