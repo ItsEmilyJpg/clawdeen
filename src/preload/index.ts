@@ -17,6 +17,8 @@ const api = {
   // The order she dragged the repositories into, which the settings list and the lanes both read.
   projects: (names: string[]): Promise<void> => ipcRenderer.invoke('projects', names),
   order: (ids: string[]): Promise<void> => ipcRenderer.invoke('order', ids),
+  // Parked by her: the one state on the board that is set rather than read.
+  hold: (id: string, on: boolean): Promise<void> => ipcRenderer.invoke('hold', id, on),
   chat: (cli: string): Promise<Line[]> => ipcRenderer.invoke('chat', cli),
   onBoard: (listen: (board: Board) => void): (() => void) => {
     const handler = (_event: unknown, board: Board): void => listen(board)

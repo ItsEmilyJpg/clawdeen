@@ -35,6 +35,7 @@ export const STATE_CLASS: { [key in StateWord]: string } = {
   'waiting-for-ci': 's-running',
   'waiting-for-issue': 's-queued',
   'waiting-for-other': 's-queued',
+  'on-hold': 's-hold',
   'no-pr': 's-none',
   draft: 's-draft',
   conflict: 's-conflict',
@@ -69,6 +70,9 @@ export const LANE_WORDS: (ActivityWord | null)[] = [
   'waiting-for-ci',
   'waiting-for-issue',
   'waiting-for-other',
+  // Under every wait, because a wait still ends on its own and this one ends when she says so. It
+  // keeps a lane rather than leaving the board: parked is not gone, which is the whole point of it.
+  'on-hold',
   null
 ]
 

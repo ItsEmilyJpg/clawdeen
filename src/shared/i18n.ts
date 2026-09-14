@@ -38,6 +38,7 @@ const STATE_LABELS: Record<Locale, Record<StateWord, string>> = {
     'waiting-for-ci': 'waiting for CI',
     'waiting-for-issue': 'waiting for issue',
     'waiting-for-other': 'waiting for other',
+    'on-hold': 'on hold',
     'no-pr': 'no PR',
     draft: 'draft',
     conflict: 'conflict',
@@ -60,6 +61,7 @@ const STATE_LABELS: Record<Locale, Record<StateWord, string>> = {
     'waiting-for-ci': 'čeká na CI',
     'waiting-for-issue': 'čeká na issue',
     'waiting-for-other': 'čeká na jiné',
+    'on-hold': 'odložená',
     'no-pr': 'bez PR',
     draft: 'koncept',
     conflict: 'konflikt',
@@ -268,6 +270,9 @@ interface Phrases {
   cardActions: string
   actionDetail: string
   actionChat: string
+  actionHold: string
+  actionUnhold: string
+  cardHold: string
   groupColumns: string
   columnTags: string
   columnDoing: string
@@ -415,6 +420,9 @@ const PHRASES: Record<Locale, Phrases> = {
     cardActions: 'What can be done with this session',
     actionDetail: 'Details',
     actionChat: 'Chat',
+    actionHold: 'Put on hold',
+    actionUnhold: 'Take off hold',
+    cardHold: 'Park it: the row stops saying it waits on you',
     groupColumns: 'Columns',
     columnTags: 'issue and PR',
     columnDoing: 'what it is on',
@@ -560,6 +568,9 @@ const PHRASES: Record<Locale, Phrases> = {
     cardActions: 'Co se dá s touhle session dělat',
     actionDetail: 'Detail',
     actionChat: 'Chat',
+    actionHold: 'Odložit',
+    actionUnhold: 'Vrátit z odložených',
+    cardHold: 'Odložit: řádek přestane tvrdit, že čeká na tebe',
     groupColumns: 'Sloupce',
     columnTags: 'issue a PR',
     columnDoing: 'na čem dělá',
