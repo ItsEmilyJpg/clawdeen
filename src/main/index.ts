@@ -19,6 +19,7 @@ import { say, setLocale, stateWord } from '../shared/i18n'
 import type { Board, Locale, Session, StateWord, ThemeMode, UsageWindow } from '../shared/types'
 import { board } from './board'
 import { saveSettings, settings } from './settings'
+import { withProject } from '../shared/projects'
 import { claimCard, underClaim, type Claim } from './focus'
 import { openSession, records } from './records'
 import { chat } from './chat'
@@ -453,6 +454,13 @@ void app.whenReady().then(() => {
   })
   // The language outlives the run, so it is written down rather than asked of the system again, and
   // the tray is rebuilt because its menu is already drawn in the language before this one.
+  // Which repositories the window draws. Kept here rather than in the page, and deliberately not
+  // applied to anything this process does: the tray, the notifications and the history go on seeing
+  // every session, so a hidden repository is out of sight and never out of earshot.
+  ipcMain.handle('hide', async (_event, project: string, shown: boolean) => {
+    saveSettings({ hidden: withProject(settings().hidden, project, shown) })
+    await refresh()
+  })
   ipcMain.handle('locale', async (_event, next: Locale) => {
     saveSettings({ locale: next })
     setLocale(next)

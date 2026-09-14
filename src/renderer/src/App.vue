@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
+import { hiddenTally, visible } from '../../shared/projects'
 import type { Board, Locale, ProjectMark, Session, StateWord, ThemeMode } from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
@@ -27,8 +28,12 @@ const board = ref<Board>({
   order: [],
   today: [],
   at: 0,
-  locale: 'en'
+  locale: 'en',
+  projects: [],
+  hidden: []
 })
+/** Set while she is looking behind the filter, so a glance costs nothing and settles nothing. */
+const revealing = ref(false)
 const filter = ref<Filter>('')
 const search = ref('')
 const dragged = ref<string | null>(null)
@@ -178,6 +183,11 @@ function speak(next: Locale): void {
   void window.api.locale(next)
 }
 
+/** Switching a repository off hides it here and changes nothing about the tray or the ringing. */
+function showProject(project: string, shown: boolean): void {
+  void window.api.hide(project, shown)
+}
+
 // Before the first paint rather than on mount: a window that starts light and turns dark a frame
 // later is worse than either.
 paint(theme.value)
@@ -208,9 +218,21 @@ function wordsOf(session: Session): StateWord[] {
   return session.activity ? [session.activity, session.state] : [session.state]
 }
 
+/**
+ * What the window has to work with: everything, less the repositories switched off, unless she is
+ * looking behind the filter right now. Every count on the board reads this rather than the board
+ * itself, so the chips, the lanes and the search all agree about what is there.
+ */
+const pool = computed(() =>
+  revealing.value ? board.value.sessions : visible(board.value.sessions, board.value.hidden)
+)
+
+/** What is behind the filter, which the board says out loud rather than leaving as a gap. */
+const behind = computed(() => hiddenTally(board.value.sessions, board.value.hidden))
+
 const counts = computed(() => {
   const tally = new Map<StateWord, number>()
-  for (const session of board.value.sessions) {
+  for (const session of pool.value) {
     for (const word of wordsOf(session)) tally.set(word, (tally.get(word) ?? 0) + 1)
   }
   return STATE_ORDER.filter((word) => tally.has(word)).map((word) => ({
@@ -219,11 +241,11 @@ const counts = computed(() => {
   }))
 })
 
-const pinned = computed(() => board.value.sessions.filter((session) => session.pinned).length)
+const pinned = computed(() => pool.value.filter((session) => session.pinned).length)
 
 const shown = computed(() => {
   const needle = search.value.trim().toLowerCase()
-  return board.value.sessions.filter((session) => {
+  return pool.value.filter((session) => {
     if (filter.value === 'pinned' && !session.pinned) return false
     if (filter.value && filter.value !== 'pinned' && !wordsOf(session).includes(filter.value)) {
       return false
@@ -351,6 +373,20 @@ onUnmounted(() => {
               </div>
             </div>
 
+            <div v-if="board.projects.length > 1" class="row stacked">
+              <span class="label">{{ say('groupProjects') }}</span>
+              <div class="projects">
+                <button
+                  v-for="name in board.projects"
+                  :key="name"
+                  :class="['seg-item', { on: !board.hidden.includes(name) }]"
+                  @click="showProject(name, board.hidden.includes(name))"
+                >
+                  {{ name }}
+                </button>
+              </div>
+            </div>
+
             <div class="row">
               <span class="label">{{ say('groupProject') }}</span>
               <div class="seg">
@@ -443,7 +479,7 @@ onUnmounted(() => {
 
     <nav class="filters">
       <button :class="['chip', { on: filter === '' }]" @click="pick('')">
-        {{ say('all') }} <b>{{ board.sessions.length }}</b>
+        {{ say('all') }} <b>{{ pool.length }}</b>
       </button>
       <button
         v-for="row in counts"
@@ -462,6 +498,21 @@ onUnmounted(() => {
       </button>
       <button v-if="board.order.length > 0" class="chip undo" @click="forget()">
         {{ say('ownOrderUndo') }}
+      </button>
+      <!-- A hidden repository is not a silent one: what is behind the filter is said here, and what
+           is waiting inside it is said first, because that is the thing hiding could have cost. -->
+      <button
+        v-if="behind.count > 0"
+        :class="['chip', 'behind', { waiting: behind.waiting > 0, on: revealing }]"
+        @click="revealing = !revealing"
+      >
+        <template v-if="revealing">{{ say('showingAll') }}</template>
+        <template v-else>
+          {{ say('hiddenCount', behind.count)
+          }}<template v-if="behind.waiting > 0">
+            · {{ say('hiddenWaiting', behind.waiting) }}</template
+          >
+        </template>
       </button>
       <input
         ref="field"
@@ -776,6 +827,42 @@ h1 {
 .plain:disabled {
   color: var(--faint);
   cursor: default;
+}
+
+/* The label sits above rather than beside it: a machine with eight repositories would otherwise
+   push the list into a column two characters wide. */
+.menu .row.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  background: var(--hover);
+  border-radius: 8px;
+}
+
+/* Amber only while something waits behind the filter: the rest of the time it is a quiet count. */
+.chip.behind {
+  border: 1px dashed var(--rule);
+  background: transparent;
+  color: var(--ink-muted);
+}
+
+.chip.behind.waiting {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.chip.behind.on {
+  border-style: solid;
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
 }
 
 .empty {

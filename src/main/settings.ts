@@ -7,6 +7,11 @@ import { localeOf, type Locale } from '../shared/i18n'
 /** What the board remembers between runs. Beside `window.json`, which keeps where the window was. */
 export interface Settings {
   locale: Locale
+  /**
+   * The repositories the board does not draw. What is hidden rather than what is shown, so a
+   * repository opened for the first time appears on its own rather than waiting to be allowed.
+   */
+  hidden: string[]
 }
 
 function file(): string {
@@ -18,11 +23,15 @@ export function settings(): Settings {
   try {
     const kept = JSON.parse(readFileSync(file(), 'utf8')) as Partial<Settings>
     // A file written by a newer version could say anything; only a language this one knows is taken.
-    if (kept.locale === 'en' || kept.locale === 'cs') return { locale: kept.locale }
+    const hidden = Array.isArray(kept.hidden)
+      ? kept.hidden.filter((one) => typeof one === 'string')
+      : []
+    if (kept.locale === 'en' || kept.locale === 'cs') return { locale: kept.locale, hidden }
+    return { locale: localeOf(app.getLocale()), hidden }
   } catch {
     // No file yet, or one nobody can read. Either way the system is what to open in.
   }
-  return { locale: localeOf(app.getLocale()) }
+  return { locale: localeOf(app.getLocale()), hidden: [] }
 }
 
 export function saveSettings(patch: Partial<Settings>): void {

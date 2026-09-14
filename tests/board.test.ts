@@ -312,6 +312,7 @@ describe('inLane', () => {
       title: 'one',
       headline: 'one',
       place: 'repo',
+      project: 'repo',
       last: 1789219700,
       active: true,
       issue: null,

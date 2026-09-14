@@ -260,6 +260,10 @@ interface Phrases {
   tokenExpired: string
   usageStatus: string
   usageEmpty: string
+  groupProjects: string
+  hiddenCount: string
+  hiddenWaiting: string
+  showingAll: string
 }
 
 const PHRASES: Record<Locale, Phrases> = {
@@ -390,7 +394,11 @@ const PHRASES: Record<Locale, Phrases> = {
     keychainUnreadable: 'the login in the Keychain cannot be read',
     tokenExpired: 'the token expired, the renewal is left to Claude Code',
     usageStatus: 'usage answered {n}',
-    usageEmpty: 'usage returned no window'
+    usageEmpty: 'usage returned no window',
+    groupProjects: 'Projects',
+    hiddenCount: '{n} hidden',
+    hiddenWaiting: '{n} waiting',
+    showingAll: 'showing all'
   },
   cs: {
     justNow: 'právě teď',
@@ -519,7 +527,11 @@ const PHRASES: Record<Locale, Phrases> = {
     keychainUnreadable: 'přihlášení v Keychainu se nedá přečíst',
     tokenExpired: 'token vypršel, obnovu nechávám Claude Code',
     usageStatus: 'usage odpovědělo {n}',
-    usageEmpty: 'usage nevrátilo žádné okno'
+    usageEmpty: 'usage nevrátilo žádné okno',
+    groupProjects: 'Projekty',
+    hiddenCount: 'skrytých {n}',
+    hiddenWaiting: '{n} čeká',
+    showingAll: 'zobrazeno vše'
   }
 }
 
