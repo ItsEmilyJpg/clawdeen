@@ -8,6 +8,8 @@ export default defineConfig(
   // The icon renderer is a plain Electron entry point, so it is CommonJS and not part of the app.
   // A worktree under .claude is another session's copy of this tree; its files are not ours to
   // judge, and the ignores above are written against this tree's paths rather than that one's.
+  // The gates are plain JavaScript run by node before a commit, so the rule that every function
+  // states its return type has nothing to state it in.
   {
     ignores: [
       '**/node_modules',
@@ -15,7 +17,8 @@ export default defineConfig(
       '**/out',
       '.claude/**',
       'tools/icons/**',
-      'tools/hook/**'
+      'tools/hook/**',
+      'tools/gate/**'
     ]
   },
   tseslint.configs.recommended,

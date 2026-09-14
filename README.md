@@ -1,4 +1,4 @@
-# Claude session
+# Clawdeen
 
 A board of the Claude Code sessions on this Mac: what each one is doing, where its pull request
 stands, and what is left of the usage windows. It lives in the menu bar, notifies when a session

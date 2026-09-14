@@ -133,7 +133,7 @@ function createWindow(): void {
     height: 760,
     ...lastBounds(),
     show: false,
-    title: 'Claude session',
+    title: 'Clawdeen',
     titleBarStyle: 'hiddenInset',
     // Without this the first click into an unfocused window only raises it, so everything on the
     // board needs clicking twice.
@@ -436,7 +436,7 @@ function watchSources(): void {
 }
 
 void app.whenReady().then(() => {
-  electronApp.setAppUserModelId('cz.hadik.claude-sessions')
+  electronApp.setAppUserModelId('cz.hadik.clawdeen')
   app.on('browser-window-created', (_event, created) => optimizer.watchWindowShortcuts(created))
 
   ipcMain.handle('board', async () => latest ?? (await board()))
@@ -460,7 +460,7 @@ void app.whenReady().then(() => {
   const bar = nativeImage.createFromPath(trayIcon)
   bar.setTemplateImage(true)
   tray = new Tray(bar)
-  tray.setToolTip('Claude session')
+  tray.setToolTip('Clawdeen')
   tray.on('click', show)
 
   void hooksInstalled()
