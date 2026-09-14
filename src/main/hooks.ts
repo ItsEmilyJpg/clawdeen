@@ -3,6 +3,7 @@ import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import script from '../../resources/board-event.sh?asset'
+import { HOOK } from './paths'
 
 /**
  * Putting the hook into the Claude settings from inside the application, because whoever downloads
@@ -10,7 +11,7 @@ import script from '../../resources/board-event.sh?asset'
  * moving or deleting the application does not leave a hook pointing into nothing.
  */
 const SETTINGS = join(app.getPath('home'), '.claude', 'settings.json')
-const INSTALLED = join(app.getPath('home'), '.config', 'claude-sessions', 'board-event.sh')
+const INSTALLED = HOOK
 const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'Notification', 'Stop']
 
 interface Hook {
