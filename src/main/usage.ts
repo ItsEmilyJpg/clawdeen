@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
+import { say, type PhraseKey } from '../shared/i18n'
 import type { UsageWindow } from '../shared/types'
 import { burnOf } from '../shared/words'
 import { CLI_CONFIG, USAGE, USAGE_REFRESH } from './paths'
@@ -11,9 +12,10 @@ const run = promisify(execFile)
 const TTL = 900
 // Two refresh cycles missed: one is the normal gap, two means the number is standing still.
 const STALE = TTL * 2
-const WINDOWS: [string, string, string][] = [
-  ['five_hour', '5 hodin', '5 h'],
-  ['seven_day', '7 dní', '7 d']
+// The long label is said when a board is built, so it follows the language like everything else.
+const WINDOWS: [string, PhraseKey, string][] = [
+  ['five_hour', 'windowFiveHour', '5 h'],
+  ['seven_day', 'windowSevenDay', '7 d']
 ]
 
 interface StoredWindow {
@@ -91,7 +93,7 @@ export async function usage(now: number): Promise<UsageWindow[]> {
   const current = stamped ? await cliAccount() : null
   const otherAccount = stamped && current && stamped !== current ? stamped : null
   const windows: UsageWindow[] = []
-  for (const [key, label, short] of WINDOWS) {
+  for (const [key, phrase, short] of WINDOWS) {
     const window = data[key]
     if (typeof window !== 'object' || !window) continue
     const { used_percentage: used, resets_at: resets, duration_minutes: minutes } = window
@@ -102,7 +104,7 @@ export async function usage(now: number): Promise<UsageWindow[]> {
     const age = now - (data.captured_at ?? 0)
     windows.push({
       key,
-      label,
+      label: say(phrase),
       short,
       used,
       resets,

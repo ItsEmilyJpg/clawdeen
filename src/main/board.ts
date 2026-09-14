@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 
+import { everyStateWord, locale, say } from '../shared/i18n'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
@@ -28,47 +29,25 @@ const HEARD_FRESH = 120
 
 /** What a task of the session's own is doing, in the words a row says. */
 const DOING: { [key in Doing]: ActivityWord } = {
-  working: 'úloha běží',
-  waiting: 'úloha čeká',
-  watching: 'čeká na tebe',
-  queued: 'gate ve frontě',
-  gating: 'gate běží'
+  working: 'task-running',
+  waiting: 'task-queued',
+  watching: 'waiting-for-you',
+  queued: 'gate-queued',
+  gating: 'gate-running'
 }
 
 const ISSUE_IN_BRANCH = /(?:^|\/)(?:task-)?(\d{1,6})(?:-|$)/
 const ISSUE_IN_TITLE = /(?<!PR )(?<!MR )#(\d{1,6})\b/
 
-const STATE_WORDS: StateWord[] = [
-  'pracuje',
-  'gate běží',
-  'gate ve frontě',
-  'úloha běží',
-  'úloha čeká',
-  'čeká na tebe',
-  'čeká na CI',
-  'čeká na issue',
-  'čeká na jiné',
-  'bez PR',
-  'koncept',
-  'konflikt',
-  'CI běží',
-  'CI červené',
-  'změny žádané',
-  'k mergi',
-  'k review',
-  'merged',
-  'zavřené'
-]
-
 /** Wider than the word list a session name carries, because a row can say what a title should not. */
 function displayState(change: Change | null): StateWord {
-  if (!change) return 'bez PR'
-  if (!change.open) return change.state ?? 'zavřené'
-  if (change.conflict) return 'konflikt'
+  if (!change) return 'no-pr'
+  if (!change.open) return change.state ?? 'closed'
+  if (change.conflict) return 'conflict'
   if (change.checks) return change.checks
-  if (change.draft) return 'koncept'
-  if (change.review === 'CHANGES_REQUESTED') return 'změny žádané'
-  return change.review === 'APPROVED' ? 'k mergi' : 'k review'
+  if (change.draft) return 'draft'
+  if (change.review === 'CHANGES_REQUESTED') return 'changes-requested'
+  return change.review === 'APPROVED' ? 'mergeable' : 'in-review'
 }
 
 /** The title repeats the issue, the change and the state, which the row already carries as labels. */
@@ -77,9 +56,14 @@ function headline(title: string, links: (Link | null)[], state: StateWord): stri
     links
       .filter(Boolean)
       .map((link) => link!.token.toLowerCase())
-      .concat('bez issue')
+      // Whoever named the session wrote one of these where it found no issue, in its own language.
+      .concat('bez issue', 'no issue')
   )
-  const words = new Set(STATE_WORDS.map((word) => word.toLowerCase()).concat(state.toLowerCase()))
+  const words = new Set(
+    everyStateWord()
+      .map((word) => word.toLowerCase())
+      .concat(state.toLowerCase())
+  )
   const parts = title.split('·').map((part) => part.trim())
   if (words.has((parts.at(-1) ?? '').toLowerCase())) parts.pop()
   const kept = parts.filter((part) => !spent.has(part.toLowerCase()))
@@ -205,19 +189,23 @@ async function activity(
 
   // Both can be true at once, and then what Claude is doing is the state while the gate rides
   // beside it: a session answering is working, even with a check queueing behind it.
-  if (asking) return { word: 'čeká na tebe', since: null, extra: beside }
-  if (working) return { word: 'pracuje', since, extra: beside }
+  if (asking) return { word: 'waiting-for-you', since: null, extra: beside }
+  if (working) return { word: 'working', since, extra: beside }
   if (beside) return { word: beside, since, extra: null }
   // A monitor is a wait on something with a name, and the row says which: a run, an issue, or
   // whatever else it was pointed at. None of them rings, because none of them is hers to answer.
   if (doing?.doing === 'watching') {
     const seen = path ? await watchedFor(path) : null
     const word: ActivityWord =
-      seen?.kind === 'ci' ? 'čeká na CI' : seen?.kind === 'issue' ? 'čeká na issue' : 'čeká na jiné'
+      seen?.kind === 'ci'
+        ? 'waiting-for-ci'
+        : seen?.kind === 'issue'
+          ? 'waiting-for-issue'
+          : 'waiting-for-other'
     return { word, since: null, extra: null }
   }
   if (age > WAITING_SECONDS || turn === 'running' || turn === 'blocked') return nothing
-  return { word: 'čeká na tebe', since: null, extra: null, idle: true }
+  return { word: 'waiting-for-you', since: null, extra: null, idle: true }
 }
 
 /**
@@ -227,8 +215,8 @@ async function activity(
  * something keeps ringing, because that question is hers whatever the run does.
  */
 export function waitingOn(doing: Doing2, change: Change | null): ActivityWord | null {
-  if (!doing.idle || change?.checks !== 'CI běží') return doing.word
-  return 'čeká na CI'
+  if (!doing.idle || change?.checks !== 'ci-running') return doing.word
+  return 'waiting-for-ci'
 }
 
 /**
@@ -291,7 +279,7 @@ async function describe(
     issue = jiraIssue([change?.branch, ...branches(record), record.title], trackers)
   }
   const last = (record.lastActivityAt ?? 0) / 1000
-  const title = (record.title ?? '(bez názvu)').split(/\s+/).join(' ')
+  const title = (record.title ?? say('untitled')).split(/\s+/).join(' ')
   const state = displayState(change)
   const word = waitingOn(doing, change)
   return {
@@ -317,7 +305,7 @@ async function describe(
     // A wait the board worked out from the change has no monitor behind it, so nothing names it:
     // the run it is about is already on the row as the state.
     about:
-      word === doing.word && word?.startsWith('čeká na') && path
+      word === doing.word && word?.startsWith('waiting-for') && path
         ? ((await watchedFor(path))?.about ?? null)
         : null,
     since: doing.since,
@@ -363,12 +351,19 @@ export async function board(): Promise<Board> {
   // own: a session she has to answer is the one thing that must not end up below the fold.
   sessions.sort(
     (one, other) =>
-      Number(one.activity !== 'čeká na tebe') - Number(other.activity !== 'čeká na tebe') ||
+      Number(one.activity !== 'waiting-for-you') - Number(other.activity !== 'waiting-for-you') ||
       placed(one) - placed(other) ||
       Number(!one.pinned) - Number(!other.pinned) ||
       Number(!one.active) - Number(!other.active) ||
       other.last - one.last
   )
   record(sessions, now)
-  return { sessions, usage: await usage(now), order: kept, today: today(now), at: now }
+  return {
+    sessions,
+    usage: await usage(now),
+    order: kept,
+    today: today(now),
+    at: now,
+    locale: locale()
+  }
 }

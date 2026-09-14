@@ -1,5 +1,7 @@
+import { decimal, say, setLocale, stateWord, toolCount } from '../../shared/i18n'
 import type { ActivityWord, Change, Session, StateWord } from '../../shared/types'
 
+export { decimal, say, setLocale, stateWord, toolCount }
 export {
   ago,
   burnVerdict,
@@ -16,52 +18,64 @@ export function prClass(change: Change, session: Session): string {
   if (!change.open) return 'pr-closed'
   if (change.draft) return 'pr-draft'
   const red =
-    change === session.change && (session.state === 'CI červené' || session.state === 'konflikt')
+    change === session.change && (session.state === 'ci-red' || session.state === 'conflict')
   return red ? 'pr-red' : 'pr-open'
 }
 
 /** One class per word, the same names the stylesheet colours. */
 export const STATE_CLASS: { [key in StateWord]: string } = {
-  pracuje: 's-working',
-  'gate běží': 's-gate',
-  'gate ve frontě': 's-queued',
-  'úloha běží': 's-task',
-  'úloha čeká': 's-queued',
-  'čeká na tebe': 's-waiting',
-  'čeká na CI': 's-running',
-  'čeká na issue': 's-queued',
-  'čeká na jiné': 's-queued',
-  'bez PR': 's-none',
-  koncept: 's-draft',
-  konflikt: 's-conflict',
-  'CI běží': 's-running',
-  'CI červené': 's-failing',
-  'změny žádané': 's-changes',
-  'k mergi': 's-mergeable',
-  'k review': 's-review',
-  otevřené: 's-review',
+  working: 's-working',
+  'gate-running': 's-gate',
+  'gate-queued': 's-queued',
+  'task-running': 's-task',
+  'task-queued': 's-queued',
+  'waiting-for-you': 's-waiting',
+  'waiting-for-ci': 's-running',
+  'waiting-for-issue': 's-queued',
+  'waiting-for-other': 's-queued',
+  'no-pr': 's-none',
+  draft: 's-draft',
+  conflict: 's-conflict',
+  'ci-running': 's-running',
+  'ci-red': 's-failing',
+  'changes-requested': 's-changes',
+  mergeable: 's-mergeable',
+  'in-review': 's-review',
+  open: 's-review',
   merged: 's-merged',
-  zavřené: 's-closed'
+  closed: 's-closed'
 }
 
 /** The order the filter bar counts them in: what a session is doing first, where its change stands after. */
 export const STATE_ORDER = Object.keys(STATE_CLASS) as StateWord[]
 
-/** The workflow: what a session goes through, in the order it is worth looking at. */
-export const LANES: { word: ActivityWord | null; title: string }[] = [
-  { word: 'čeká na tebe', title: 'čeká na tebe' },
-  { word: 'pracuje', title: 'pracuje' },
-  { word: 'úloha běží', title: 'úloha běží' },
-  { word: 'úloha čeká', title: 'úloha čeká' },
-  { word: 'gate běží', title: 'gate běží' },
-  { word: 'gate ve frontě', title: 'gate ve frontě' },
+/**
+ * The workflow: what a session goes through, in the order it is worth looking at.
+ *
+ * The titles are read rather than stored, because a lane is named after its state and the language
+ * can change under a running window.
+ */
+export const LANE_WORDS: (ActivityWord | null)[] = [
+  'waiting-for-you',
+  'working',
+  'task-running',
+  'task-queued',
+  'gate-running',
+  'gate-queued',
   // Last of the lanes that say something: a wait on somebody else's machine is nobody's to answer,
   // and it belongs under everything that is still hers.
-  { word: 'čeká na CI', title: 'čeká na CI' },
-  { word: 'čeká na issue', title: 'čeká na issue' },
-  { word: 'čeká na jiné', title: 'čeká na jiné' },
-  { word: null, title: 'ostatní' }
+  'waiting-for-ci',
+  'waiting-for-issue',
+  'waiting-for-other',
+  null
 ]
+
+export function laneRows(): { word: ActivityWord | null; title: string }[] {
+  return LANE_WORDS.map((word) => ({
+    word,
+    title: word === null ? say('otherLane') : stateWord(word)
+  }))
+}
 
 /**
  * A lane holds still. The list sorts by what moved last, which is right there and wrong here: a

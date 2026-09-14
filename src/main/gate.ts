@@ -71,7 +71,7 @@ export async function gates(): Promise<GateConfig | null> {
 export async function gateState(
   record: SessionRecord,
   config: GateConfig | null
-): Promise<'gate běží' | 'gate ve frontě' | null> {
+): Promise<'gate-running' | 'gate-queued' | null> {
   const tree = record.worktreePath ?? record.cwd
   if (!config || !tree || !config.lock) return null
   const lock = join(tree, config.lock)
@@ -82,6 +82,6 @@ export async function gateState(
     return null
   }
   if (!taken.isDirectory()) return null
-  if (config.running.has(await realpath(tree).catch(() => tree))) return 'gate běží'
-  return Date.now() / 1000 - taken.mtimeMs / 1000 < STALE_LOCK ? 'gate ve frontě' : null
+  if (config.running.has(await realpath(tree).catch(() => tree))) return 'gate-running'
+  return Date.now() / 1000 - taken.mtimeMs / 1000 < STALE_LOCK ? 'gate-queued' : null
 }
