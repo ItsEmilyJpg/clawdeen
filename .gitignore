@@ -6,3 +6,10 @@ out
 *.log*
 var/
 __pycache__/
+
+# Both of these were held out by configuration that does not travel with the repository: the
+# worktrees by .git/info/exclude, which is local to one clone, and the local settings by a global
+# gitignore on one machine. A fresh clone elsewhere had neither, and would have committed a
+# working copy and a file full of absolute paths.
+.claude/worktrees/
+.claude/settings.local.json

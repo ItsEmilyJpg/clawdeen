@@ -1,10 +1,15 @@
 {
-  "name": "claude-sessions",
+  "name": "clawdeen",
   "version": "1.0.0",
-  "description": "An Electron application with Vue and TypeScript",
+  "description": "A menu bar board of the Claude Code sessions running on this Mac.",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "Emily",
+  "license": "MIT",
+  "homepage": "https://github.com/ItsEmilyJpg/clawdeen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ItsEmilyJpg/clawdeen.git"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -23,7 +28,8 @@
     "test": "vitest run",
     "hook:install": "node tools/hook/install.mjs",
     "hook:remove": "node tools/hook/install.mjs --remove",
-    "check": "npm run typecheck && npm run lint && npm test && node tools/gate/stamp.mjs"
+    "private-names": "node tools/gate/private-names.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run private-names && node tools/gate/stamp.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

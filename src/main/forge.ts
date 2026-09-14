@@ -12,10 +12,10 @@ const CHECKS_TTL = 90
 const PR_FIELDS =
   'url,state,isDraft,headRefName,closingIssuesReferences,statusCheckRollup,mergeable,reviewDecision'
 const STATES: { [key: string]: StateWord } = {
-  open: 'otevřené',
-  opened: 'otevřené',
+  open: 'open',
+  opened: 'open',
   merged: 'merged',
-  closed: 'zavřené'
+  closed: 'closed'
 }
 const OPEN_STATES = new Set(['open', 'opened'])
 const CHECKS_RED = new Set([
@@ -134,7 +134,7 @@ export async function branchAt(root: string): Promise<string | null> {
 }
 
 function stateOf(state: string | undefined, draft = false): StateWord | null {
-  if (draft) return 'koncept'
+  if (draft) return 'draft'
   return STATES[(state ?? '').toLowerCase()] ?? null
 }
 
@@ -182,9 +182,9 @@ export function checksOf(rollup: RollupEntry[] | undefined): {
     until: finished.length > 0 && finished.length === verdicts.length ? Math.max(...finished) : null
   }
   // A job that failed early is worth saying even while the rest of the run is still going.
-  if (failed.length > 0) return { checks: 'CI červené', failed, progress }
+  if (failed.length > 0) return { checks: 'ci-red', failed, progress }
   if (verdicts.some((verdict) => CHECKS_RUNNING.has(verdict))) {
-    return { checks: 'CI běží', failed: [], progress }
+    return { checks: 'ci-running', failed: [], progress }
   }
   return { checks: null, failed: [], progress }
 }

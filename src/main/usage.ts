@@ -4,6 +4,7 @@ import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
+import { say, type PhraseKey } from '../shared/i18n'
 import type { UsageWindow } from '../shared/types'
 import { burnOf } from '../shared/words'
 import { CLI_CONFIG } from './paths'
@@ -20,10 +21,13 @@ const run = promisify(execFile)
 const TTL = 180
 // Two refresh cycles missed: one is the normal gap, two means the number is standing still.
 const STALE = TTL * 2
-/** The windows, and how long each one is: the endpoint says how full they are, never how wide. */
-const WINDOWS: [string, string, string, number][] = [
-  ['five_hour', '5 hodin', '5 h', 300],
-  ['seven_day', '7 dní', '7 d', 10080]
+/**
+ * The windows, and how long each one is: the endpoint says how full they are, never how wide. The
+ * long label is said when a board is built, so it follows the language like everything else.
+ */
+const WINDOWS: [string, PhraseKey, string, number][] = [
+  ['five_hour', 'windowFiveHour', '5 h', 300],
+  ['seven_day', 'windowSevenDay', '7 d', 10080]
 ]
 
 // The same question Claude Code asks itself: `at_wall=1` wants the values at the wall of the
@@ -87,17 +91,17 @@ async function token(): Promise<{ value: string } | { error: string }> {
     })
     raw = stdout
   } catch {
-    return { error: 'Keychain nemá přihlášení, pomůže `claude /login`' }
+    return { error: say('noKeychainLogin') }
   }
   let oauth: { accessToken?: string; expiresAt?: number } = {}
   try {
     oauth = (JSON.parse(raw) as { claudeAiOauth?: typeof oauth }).claudeAiOauth ?? {}
   } catch {
-    return { error: 'přihlášení v Keychainu se nedá přečíst' }
+    return { error: say('keychainUnreadable') }
   }
-  if (!oauth.accessToken) return { error: 'Keychain nemá přihlášení, pomůže `claude /login`' }
+  if (!oauth.accessToken) return { error: say('noKeychainLogin') }
   if (!oauth.expiresAt || oauth.expiresAt < Date.now() + SPARE)
-    return { error: 'token vypršel, obnovu nechávám Claude Code' }
+    return { error: say('tokenExpired') }
   return { value: oauth.accessToken }
 }
 
@@ -128,7 +132,7 @@ async function live(now: number): Promise<Stored> {
       },
       signal: AbortSignal.timeout(8000)
     })
-    if (!response.ok) throw new Error(`usage odpovědělo ${response.status}`)
+    if (!response.ok) throw new Error(say('usageStatus', response.status))
     payload = (await response.json()) as typeof payload
   } catch (error) {
     return { error: (error as Error).message.split('\n')[0].slice(0, 200) }
@@ -146,7 +150,7 @@ async function live(now: number): Promise<Stored> {
     found = true
   }
   // An empty answer is not a reading, and saying so beats drawing a board with no windows on it.
-  return found ? data : { error: 'usage nevrátilo žádné okno' }
+  return found ? data : { error: say('usageEmpty') }
 }
 
 let account: { at: number; name: string | null } | null = null
@@ -202,7 +206,7 @@ export async function usage(now: number): Promise<UsageWindow[]> {
   const current = stamped ? await cliAccount() : null
   const otherAccount = stamped && current && stamped !== current ? stamped : null
   const windows: UsageWindow[] = []
-  for (const [key, label, short] of WINDOWS) {
+  for (const [key, phrase, short] of WINDOWS) {
     const window = data[key]
     if (typeof window !== 'object' || !window) continue
     const { used_percentage: used, resets_at: resets, duration_minutes: minutes } = window
@@ -213,7 +217,7 @@ export async function usage(now: number): Promise<UsageWindow[]> {
     const age = now - (data.captured_at ?? 0)
     windows.push({
       key,
-      label,
+      label: say(phrase),
       short,
       used,
       resets,

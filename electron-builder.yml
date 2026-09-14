@@ -1,5 +1,5 @@
-appId: cz.hadik.claude-sessions
-productName: Claude session
+appId: cz.itsemilyjpg.clawdeen
+productName: Clawdeen
 directories:
   buildResources: build
 files:

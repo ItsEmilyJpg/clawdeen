@@ -3,16 +3,24 @@ import { describe, expect, it } from 'vitest'
 import { waitingOn } from '../src/main/board'
 import { checksOf } from '../src/main/forge'
 import { openSession } from '../src/main/records'
-import { burnOf, burnVerdict, doubtsOf, repoColour, stateLabel, usageRows } from '../src/shared/words'
-import { inLane, LANES } from '../src/renderer/src/words'
-import type { Change, Session, UsageWindow } from '../src/shared/types'
+import {
+  burnOf,
+  burnVerdict,
+  doubtsOf,
+  repoColour,
+  stateLabel,
+  usageRows
+} from '../src/shared/words'
+import { inLane, LANE_WORDS, laneRows } from '../src/renderer/src/words'
+import { asStateWord, everyStateWord, setLocale, stateWord } from '../src/shared/i18n'
+import type { Change, Session, StateWord, UsageWindow } from '../src/shared/types'
 
 function change(over: Partial<Change> = {}): Change {
   return {
     label: 'PR #1',
     token: 'PR #1',
     url: 'https://example.test/1',
-    state: 'otevřené',
+    state: 'open',
     open: true,
     draft: false,
     branch: 'feature/one',
@@ -33,7 +41,7 @@ describe('checksOf', () => {
       { conclusion: 'FAILURE', name: 'integration', detailsUrl: 'https://example.test/job' },
       { status: 'IN_PROGRESS', name: 'checks', startedAt: '2026-09-12T08:01:00Z' }
     ])
-    expect(checks).toBe('CI červené')
+    expect(checks).toBe('ci-red')
     expect(failed).toEqual([{ label: 'integration', url: 'https://example.test/job' }])
     expect(progress).toEqual({
       done: 2,
@@ -45,7 +53,7 @@ describe('checksOf', () => {
   })
 
   it('is running while a check has no verdict and nothing failed', () => {
-    expect(checksOf([{ status: 'QUEUED', name: 'checks' }]).checks).toBe('CI běží')
+    expect(checksOf([{ status: 'QUEUED', name: 'checks' }]).checks).toBe('ci-running')
   })
 
   it('says nothing when every check passed', () => {
@@ -65,35 +73,35 @@ describe('stateLabel', () => {
   it('carries the count and the elapsed time while the checks run', () => {
     const since = Date.now() / 1000 - 8 * 60
     const label = stateLabel(
-      'CI běží',
+      'ci-running',
       change({ progress: { done: 2, total: 5, failed: 0, since } })
     )
-    expect(label).toBe('CI běží 2/5 · 8 min')
+    expect(label).toBe('CI running 2/5 · 8 min')
   })
 
   it('keeps the count on a red run that is not over', () => {
     const progress = { done: 1, total: 4, failed: 1, since: null, until: null }
-    expect(stateLabel('CI červené', change({ progress }))).toBe('CI červené 1/4')
+    expect(stateLabel('ci-red', change({ progress }))).toBe('CI red 1/4')
   })
 
   it('says how long ago a finished run finished', () => {
     const until = Date.now() / 1000 - 14 * 60
     const progress = { done: 4, total: 4, failed: 1, since: null, until }
-    expect(stateLabel('CI červené', change({ progress }))).toBe('CI červené · před 14 min')
+    expect(stateLabel('ci-red', change({ progress }))).toBe('CI red · 14 min ago')
   })
 
   it('says the word alone when a finished run kept no time', () => {
     const progress = { done: 4, total: 4, failed: 1, since: null, until: null }
-    expect(stateLabel('CI červené', change({ progress }))).toBe('CI červené')
+    expect(stateLabel('ci-red', change({ progress }))).toBe('CI red')
   })
 
   it('counts a fresh run in seconds rather than in zero minutes', () => {
     const progress = { done: 0, total: 3, failed: 0, since: Date.now() / 1000 - 20, until: null }
-    expect(stateLabel('CI běží', change({ progress }))).toBe('CI běží 0/3 · 20 s')
+    expect(stateLabel('ci-running', change({ progress }))).toBe('CI running 0/3 · 20 s')
   })
 
   it('says the word alone where there is no run', () => {
-    expect(stateLabel('bez PR', null)).toBe('bez PR')
+    expect(stateLabel('no-pr', null)).toBe('no PR')
   })
 })
 
@@ -156,18 +164,22 @@ describe('doubtsOf', () => {
   })
 
   it('says how old the number is', () => {
-    expect(doubtsOf(window({ stale: 35 * 60 }))).toEqual(['stav před 35 min'])
+    expect(doubtsOf(window({ stale: 35 * 60 }))).toEqual(['read 35 min ago'])
   })
 
   it('says why it could not be refreshed, before whose it is', () => {
     const doubts = doubtsOf(
       window({ stale: 20 * 60, error: 'token vypršel', otherAccount: 'a@b.cz · Jiná' })
     )
-    expect(doubts).toEqual(['stav před 20 min', 'neobnoveno: token vypršel', 'účet a@b.cz · Jiná'])
+    expect(doubts).toEqual([
+      'read 20 min ago',
+      'not refreshed: token vypršel',
+      'account a@b.cz · Jiná'
+    ])
   })
 
   it('says whose the number is even where it is otherwise current', () => {
-    expect(doubtsOf(window({ otherAccount: 'a@b.cz · Jiná' }))).toEqual(['účet a@b.cz · Jiná'])
+    expect(doubtsOf(window({ otherAccount: 'a@b.cz · Jiná' }))).toEqual(['account a@b.cz · Jiná'])
   })
 })
 
@@ -192,8 +204,8 @@ describe('usageRows', () => {
   it('gives one row per window and none of its own where nothing is doubted', () => {
     const rows = usageRows([window(), window({ key: 'seven_day', short: '7 d' })])
     expect(rows.map((row) => row.label)).toEqual([
-      '5 h 42 % · spálíš za 2 h 0 min · reset za 1 h 0 min',
-      '7 d 42 % · spálíš za 2 h 0 min · reset za 1 h 0 min'
+      '5 h 42 % · spent in 2 h 0 min · resets in 1 h 0 min',
+      '7 d 42 % · spent in 2 h 0 min · resets in 1 h 0 min'
     ])
     expect(rows.every((row) => row.window !== null)).toBe(true)
   })
@@ -203,12 +215,12 @@ describe('usageRows', () => {
     const rows = usageRows([window(doubt), window({ ...doubt, key: 'seven_day', short: '7 d' })])
     expect(rows).toHaveLength(3)
     expect(rows.filter((row) => row.label.includes('a@b.cz'))).toHaveLength(1)
-    expect(rows.at(-1)).toEqual({ label: 'účet a@b.cz · Jiná', window: null })
+    expect(rows.at(-1)).toEqual({ label: 'account a@b.cz · Jiná', window: null })
   })
 
   it('keeps the reset on a doubted window and drops what it burns', () => {
     const [row] = usageRows([window({ stale: 40 * 60 })])
-    expect(row.label).toBe('5 h 42 % · reset za 1 h 0 min')
+    expect(row.label).toBe('5 h 42 % · resets in 1 h 0 min')
   })
 
   it('has nothing to show without a window', () => {
@@ -217,43 +229,78 @@ describe('usageRows', () => {
 })
 
 describe('waitingOn', () => {
-  const idle = { word: 'čeká na tebe' as const, since: null, extra: null, idle: true }
+  const idle = { word: 'waiting-for-you' as const, since: null, extra: null, idle: true }
 
   it('waits on the run, not on her, where the turn is over and the checks are going', () => {
-    expect(waitingOn(idle, change({ checks: 'CI běží' }))).toBe('čeká na CI')
+    expect(waitingOn(idle, change({ checks: 'ci-running' }))).toBe('waiting-for-ci')
   })
 
   it('keeps ringing where the session asked something, whatever the run does', () => {
-    const asking = { word: 'čeká na tebe' as const, since: null, extra: null }
-    expect(waitingOn(asking, change({ checks: 'CI běží' }))).toBe('čeká na tebe')
+    const asking = { word: 'waiting-for-you' as const, since: null, extra: null }
+    expect(waitingOn(asking, change({ checks: 'ci-running' }))).toBe('waiting-for-you')
   })
 
   it('is hers again once the run goes red', () => {
-    expect(waitingOn(idle, change({ checks: 'CI červené' }))).toBe('čeká na tebe')
+    expect(waitingOn(idle, change({ checks: 'ci-red' }))).toBe('waiting-for-you')
   })
 
   it('is hers where there is no change at all', () => {
-    expect(waitingOn(idle, null)).toBe('čeká na tebe')
+    expect(waitingOn(idle, null)).toBe('waiting-for-you')
   })
 
   it('leaves a session that is working alone', () => {
-    const working = { word: 'pracuje' as const, since: null, extra: null }
-    expect(waitingOn(working, change({ checks: 'CI běží' }))).toBe('pracuje')
+    const working = { word: 'working' as const, since: null, extra: null }
+    expect(waitingOn(working, change({ checks: 'ci-running' }))).toBe('working')
   })
 
   it('says nothing where the session said nothing', () => {
     expect(
-      waitingOn({ word: null, since: null, extra: null }, change({ checks: 'CI běží' }))
+      waitingOn({ word: null, since: null, extra: null }, change({ checks: 'ci-running' }))
     ).toBeNull()
   })
 })
 
-describe('LANES', () => {
+describe('lanes', () => {
   it('keeps the CI wait under everything that is still hers', () => {
-    const words = LANES.map((lane) => lane.word)
-    expect(words).toContain('čeká na CI')
-    expect(words.indexOf('čeká na CI')).toBeGreaterThan(words.indexOf('čeká na tebe'))
+    const words = LANE_WORDS
+    expect(words).toContain('waiting-for-ci')
+    expect(words.indexOf('waiting-for-ci')).toBeGreaterThan(words.indexOf('waiting-for-you'))
     expect(words.at(-1)).toBeNull()
+  })
+
+  it('names every lane, the leftover one included', () => {
+    const titles = laneRows().map((lane) => lane.title)
+    expect(titles).toContain('waiting for you')
+    expect(titles.at(-1)).toBe('other')
+  })
+})
+
+describe('the words a title can end with', () => {
+  it('knows every language and the ones from before the states became keys', () => {
+    const words = everyStateWord()
+    expect(words).toContain('waiting-for-you')
+    expect(words).toContain('waiting for you')
+    expect(words).toContain('čeká na tebe')
+  })
+
+  it('reads an old Czech stretch back as the key it means', () => {
+    expect(asStateWord('čeká na tebe')).toBe('waiting-for-you')
+    expect(asStateWord('waiting-for-you')).toBe('waiting-for-you')
+  })
+
+  it('says nothing about a word no version ever wrote', () => {
+    expect(asStateWord('kdovíco')).toBeNull()
+  })
+
+  it('hands back a word it does not know rather than throwing', () => {
+    expect(stateWord('kdovíco' as StateWord)).toBe('kdovíco')
+  })
+
+  it('says the same state in the other language', () => {
+    setLocale('cs')
+    expect(stateWord('waiting-for-you')).toBe('čeká na tebe')
+    setLocale('en')
+    expect(stateWord('waiting-for-you')).toBe('waiting for you')
   })
 })
 
@@ -270,8 +317,8 @@ describe('inLane', () => {
       issue: null,
       change: null,
       changes: [],
-      state: 'bez PR',
-      activity: 'pracuje',
+      state: 'no-pr',
+      activity: 'working',
       extra: null,
       about: null,
       since: null,
@@ -337,11 +384,11 @@ describe('openSession', () => {
 
 describe('repoColour', () => {
   it('gives one repository the same colour every time', () => {
-    expect(repoColour('notes')).toBe(repoColour('notes'))
+    expect(repoColour('clawdeen')).toBe(repoColour('clawdeen'))
   })
 
   it('tells the repositories on this machine apart', () => {
-    const names = ['notes', 'claude-sessions', 'examplecorp']
+    const names = ['clawdeen', 'notes', 'website']
     expect(new Set(names.map(repoColour)).size).toBe(names.length)
   })
 

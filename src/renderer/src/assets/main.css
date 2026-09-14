@@ -1,5 +1,6 @@
 /*
- * The surfaces, the state colours and the type scale are tokens borrowed from another project, so this reads like it.
+ * The surfaces, the state colours and the type scale are one borrowed set, so the board reads the
+ * same as the author's other tools rather than like a thing of its own.
  * Each token carries both themes in one place: `light-dark()` reads whichever the element's
  * `color-scheme` says, so the choice below is the only thing that switches them, and a token can
  * never be defined for one theme and forgotten in the other.

@@ -2,7 +2,16 @@
 import { computed, ref } from 'vue'
 
 import type { ProjectMark, Session } from '../../../shared/types'
-import { ago, inWords, prClass, repoColour, stateLabel, STATE_CLASS } from '../words'
+import {
+  ago,
+  inWords,
+  prClass,
+  repoColour,
+  say,
+  stateLabel,
+  stateWord,
+  STATE_CLASS
+} from '../words'
 
 const props = defineProps<{
   session: Session
@@ -22,7 +31,7 @@ const emit = defineEmits<{
 const APP_SESSION = 'claude://code/continue?session='
 const FAILED_SHOWN = 3
 const TOO_LONG = 600
-const CARRIED = new Set(['merged', 'zavřené', 'otevřené', 'koncept'])
+const CARRIED = new Set(['merged', 'closed', 'open', 'draft'])
 
 /**
  * The sheet opens over the row it belongs to, so the row says where it is: the card is measured at
@@ -41,14 +50,14 @@ const named = computed(() => {
   return [
     session.issue
       ? { label: session.issue.label, kind: 'issue', url: session.issue.url }
-      : { label: 'bez issue', kind: `${STATE_CLASS['bez PR']} spare` },
+      : { label: say('noIssue'), kind: `${STATE_CLASS['no-pr']} spare` },
     ...(session.changes.length > 0
       ? session.changes.map((change) => ({
           label: change.label,
           kind: `pr ${prClass(change, session)}`,
           url: change.url
         }))
-      : [{ label: session.state, kind: `${STATE_CLASS[session.state]} spare` }])
+      : [{ label: stateWord(session.state), kind: `${STATE_CLASS[session.state]} spare` }])
   ]
 })
 
@@ -62,17 +71,18 @@ const standing = computed(() => {
     const about = session.about ? ` · ${session.about}` : ''
     // How long says something about a task, and nothing at all about how long she has been the one
     // holding it up, so it only rides with the task states.
-    const timed = session.since && session.activity !== 'čeká na tebe'
+    const timed = session.since && session.activity !== 'waiting-for-you'
     const on = timed ? ` · ${inWords(Date.now() / 1000 - (session.since as number))}` : ''
     // A task that has been on for longer than this is not progress any more, it is a thing to look at.
     const hot = timed && Date.now() / 1000 - (session.since as number) > TOO_LONG ? ' hot' : ''
-    const label = session.activity + about + on
-    if (!props.laned || label !== session.activity) {
+    const word = stateWord(session.activity)
+    const label = word + about + on
+    if (!props.laned || label !== word) {
       rows.push({ label, kind: STATE_CLASS[session.activity] + hot })
     }
   }
   if (session.extra) {
-    rows.push({ label: session.extra, kind: STATE_CLASS[session.extra] })
+    rows.push({ label: stateWord(session.extra), kind: STATE_CLASS[session.extra] })
   }
   // Where the word only repeats what the pull request chip already says in its colour, it goes.
   if (session.change && !CARRIED.has(session.state)) {
@@ -195,8 +205,8 @@ function open(url: string): void {
       <div class="meta">{{ session.place }} · {{ ago(session.last) }}</div>
     </div>
     <div class="acts">
-      <button class="act" title="Vše, co se o session ví" @click.stop="expand">detail</button>
-      <button class="act" title="Přečíst chat" @click.stop="emit('peek')">chat</button>
+      <button class="act" :title="say('cardDetail')" @click.stop="expand">detail</button>
+      <button class="act" :title="say('readChat')" @click.stop="emit('peek')">chat</button>
     </div>
   </li>
 </template>

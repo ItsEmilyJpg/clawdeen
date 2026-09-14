@@ -7,7 +7,22 @@ const { join } = require('node:path')
 
 const root = join(__dirname, '..', '..')
 
-/** The board seen from far away: rows of sessions, the top one wanting an answer. */
+/**
+ * One claw mark: widest where the claw bit, tapering to a point where it left. Two curves from tip
+ * to tip, so nothing is stroked and the shape stays the same at every size.
+ */
+const claw = (x, lean, long, fill) => `
+  <path fill="${fill}"
+        transform="translate(${x} 0) rotate(${lean} 512 512)
+                   translate(512 512) scale(1 ${long}) translate(-512 -512)"
+        d="M470 214
+           C 592 384 620 610 578 838
+           C 520 606 442 392 470 214 Z"/>`
+
+/**
+ * Three claw marks across the ground, leaning as one strike rather than standing side by side, and
+ * in the colours a row uses for what wants an answer, what is running and what is only sitting.
+ */
 const appIcon = (size) => `
 <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">
   <defs>
@@ -17,26 +32,23 @@ const appIcon = (size) => `
     </linearGradient>
   </defs>
   <rect width="1024" height="1024" rx="228" fill="url(#ground)"/>
-  <rect x="150" y="252" width="724" height="152" rx="46" fill="#1f2a35"/>
-  <rect x="150" y="436" width="724" height="152" rx="46" fill="#1c2630"/>
-  <rect x="150" y="620" width="724" height="152" rx="46" fill="#19222b"/>
-  <circle cx="238" cy="328" r="40" fill="#f0a17a"/>
-  <circle cx="238" cy="512" r="40" fill="#64c39a"/>
-  <circle cx="238" cy="696" r="40" fill="#4a5964"/>
-  <rect x="318" y="306" width="404" height="44" rx="22" fill="#cfd9e2"/>
-  <rect x="318" y="490" width="330" height="44" rx="22" fill="#8b98a4"/>
-  <rect x="318" y="674" width="246" height="44" rx="22" fill="#66727d"/>
+  <g transform="rotate(-24 512 512)">
+    ${claw(-170, -9, 0.84, '#f0a17a')}
+    ${claw(0, 0, 1, '#64c39a')}
+    ${claw(170, 9, 0.9, '#7c8b98')}
+  </g>
 </svg>`
 
 /** The menu bar wants one colour and the system inverts it, so this is black on nothing. */
 const trayIcon = (size) => `
 <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 36 36">
-  <circle cx="6" cy="8" r="3.4" fill="#000"/>
-  <circle cx="6" cy="18" r="3.4" fill="#000"/>
-  <circle cx="6" cy="28" r="3.4" fill="#000"/>
-  <rect x="13" y="5.6" width="22" height="4.8" rx="2.4" fill="#000"/>
-  <rect x="13" y="15.6" width="17" height="4.8" rx="2.4" fill="#000"/>
-  <rect x="13" y="25.6" width="12" height="4.8" rx="2.4" fill="#000"/>
+  <g fill="#000" transform="rotate(-24 18 18)">
+    <path transform="translate(-6.5 0) rotate(-9 18 18)"
+          d="M16.5 7.5 C20.8 13.5 21.8 21.4 20.3 29.5 C18.3 21.3 15.5 13.8 16.5 7.5 Z"/>
+    <path d="M16.5 7.5 C20.8 13.5 21.8 21.4 20.3 29.5 C18.3 21.3 15.5 13.8 16.5 7.5 Z"/>
+    <path transform="translate(6.5 0) rotate(9 18 18)"
+          d="M16.5 7.5 C20.8 13.5 21.8 21.4 20.3 29.5 C18.3 21.3 15.5 13.8 16.5 7.5 Z"/>
+  </g>
 </svg>`
 
 let sheet = null
@@ -52,7 +64,7 @@ async function open() {
     backgroundColor: '#00000000',
     webPreferences: { offscreen: true }
   })
-  const page = join(app.getPath('temp'), 'claude-sessions-icon.html')
+  const page = join(app.getPath('temp'), 'clawdeen-icon.html')
   await writeFile(page, '<body style="margin:0;background:transparent"></body>')
   await sheet.loadFile(page)
 }

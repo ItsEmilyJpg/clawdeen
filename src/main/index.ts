@@ -15,8 +15,10 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { watch } from 'node:fs'
 import { join } from 'node:path'
 
-import type { Board, Session, StateWord, ThemeMode, UsageWindow } from '../shared/types'
+import { say, setLocale, stateWord } from '../shared/i18n'
+import type { Board, Locale, Session, StateWord, ThemeMode, UsageWindow } from '../shared/types'
 import { board } from './board'
+import { saveSettings, settings } from './settings'
 import { claimCard, underClaim, type Claim } from './focus'
 import { openSession, records } from './records'
 import { chat } from './chat'
@@ -51,26 +53,26 @@ const DOT_IMAGE: { [key in Dot]: [string, number] } = {
 }
 
 const DOT: { [key in StateWord]: Dot } = {
-  pracuje: 'green',
-  'gate běží': 'blue',
-  'gate ve frontě': 'amber',
-  'úloha běží': 'blue',
-  'úloha čeká': 'grey',
-  'čeká na tebe': 'amber',
-  'čeká na CI': 'blue',
-  'čeká na issue': 'grey',
-  'čeká na jiné': 'grey',
-  'bez PR': 'grey',
-  koncept: 'amber',
-  konflikt: 'red',
-  'CI běží': 'blue',
-  'CI červené': 'red',
-  'změny žádané': 'amber',
-  'k mergi': 'green',
-  'k review': 'blue',
-  otevřené: 'blue',
+  working: 'green',
+  'gate-running': 'blue',
+  'gate-queued': 'amber',
+  'task-running': 'blue',
+  'task-queued': 'grey',
+  'waiting-for-you': 'amber',
+  'waiting-for-ci': 'blue',
+  'waiting-for-issue': 'grey',
+  'waiting-for-other': 'grey',
+  'no-pr': 'grey',
+  draft: 'amber',
+  conflict: 'red',
+  'ci-running': 'blue',
+  'ci-red': 'red',
+  'changes-requested': 'amber',
+  mergeable: 'green',
+  'in-review': 'blue',
+  open: 'blue',
   merged: 'purple',
-  zavřené: 'grey'
+  closed: 'grey'
 }
 
 const drawn = new Map<Dot, NativeImage>()
@@ -133,7 +135,7 @@ function createWindow(): void {
     height: 760,
     ...lastBounds(),
     show: false,
-    title: 'Claude session',
+    title: 'Clawdeen',
     titleBarStyle: 'hiddenInset',
     // Without this the first click into an unfocused window only raises it, so everything on the
     // board needs clicking twice.
@@ -169,8 +171,8 @@ function show(): void {
 }
 
 function trayTitle(sessions: Session[]): string {
-  const asking = sessions.filter((session) => session.activity === 'čeká na tebe').length
-  const working = sessions.filter((session) => session.activity === 'pracuje').length
+  const asking = sessions.filter((session) => session.activity === 'waiting-for-you').length
+  const working = sessions.filter((session) => session.activity === 'working').length
   if (asking > 0) return `● ${asking}`
   // Never nothing: an empty title with an empty image is a tray icon that cannot be clicked.
   return working > 0 ? `○ ${working}` : '·'
@@ -190,7 +192,10 @@ function link(label: string, url: string, colour: Dot): MenuItemConstructorOptio
 function trayRows(session: Session): MenuItemConstructorOptions[] {
   const change = session.change
   const doing = session.activity
-    ? [session.activity + (session.about ? ` · ${session.about}` : ''), session.extra]
+    ? [
+        stateWord(session.activity) + (session.about ? ` · ${session.about}` : ''),
+        session.extra && stateWord(session.extra)
+      ]
         .filter(Boolean)
         .join(' + ')
     : ''
@@ -239,29 +244,27 @@ function trayMenu(current: Board | null): Menu {
     enabled: false
   }))
   return Menu.buildFromTemplate([
-    ...(rows.length > 0
-      ? rows
-      : [{ label: 'Žádná session za posledních sedm dní', enabled: false }]),
+    ...(rows.length > 0 ? rows : [{ label: say('noSessions'), enabled: false }]),
     ...meters,
     ...(spent.length > 0
       ? [{ type: 'separator' as const }, { label: 'Dnes', enabled: false }, ...spent]
       : []),
     { type: 'separator' },
-    { label: 'Otevřít přehled', click: show },
+    { label: say('openBoard'), click: show },
     { label: 'Obnovit', click: () => void refresh() },
     {
-      label: 'Hlásit stav z Claude hooků',
+      label: say('reportState'),
       type: 'checkbox',
       checked: wired,
       click: () => void wire(!wired)
     },
     {
-      label: 'Spouštět po přihlášení',
+      label: say('startAtLogin'),
       type: 'checkbox',
       checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked })
     },
-    { label: 'Ukončit', click: () => app.quit() }
+    { label: say('quit'), click: () => app.quit() }
   ])
 }
 
@@ -273,12 +276,9 @@ async function wire(on: boolean): Promise<void> {
   if (on) {
     const { response } = await dialog.showMessageBox({
       type: 'question',
-      message: 'Zapojit stav ze session do desky?',
-      detail:
-        'Přidá se hook do ~/.claude/settings.json, který při každé události pošle na loopback, co ' +
-        'session dělá. Co tam je teď, se uloží vedle jako settings.json.before-board. Session, ' +
-        'které už běží, ho načtou po /hooks nebo po restartu.',
-      buttons: ['Zapojit', 'Nechat být'],
+      message: say('wireQuestion'),
+      detail: say('wireDetail'),
+      buttons: [say('wireConnect'), say('wireLeave')],
       defaultId: 0,
       cancelId: 1
     })
@@ -286,11 +286,11 @@ async function wire(on: boolean): Promise<void> {
     try {
       const kept = await installHooks()
       wired = true
-      await dialog.showMessageBox({ message: 'Hooky jsou zapojené.', detail: `Záloha: ${kept}` })
+      await dialog.showMessageBox({ message: say('wireDone'), detail: say('wireBackup', kept) })
     } catch (error) {
       await dialog.showMessageBox({
         type: 'error',
-        message: 'Nešlo to',
+        message: say('wireFailed'),
         detail: (error as Error).message
       })
     }
@@ -305,12 +305,12 @@ async function wire(on: boolean): Promise<void> {
 function announce(sessions: Session[]): void {
   const now = new Set<string>()
   for (const session of sessions) {
-    if (session.activity !== 'čeká na tebe') continue
+    if (session.activity !== 'waiting-for-you') continue
     now.add(session.id)
     // The first board of a run is the state of the world, not a set of changes to ring about.
     if (waiting.has(session.id) || !announced) continue
     const notification = new Notification({
-      title: 'Čeká na tebe',
+      title: say('waitingTitle'),
       body: [session.headline, session.place].filter(Boolean).join(' — ')
     })
     notification.on('click', () => {
@@ -436,7 +436,9 @@ function watchSources(): void {
 }
 
 void app.whenReady().then(() => {
-  electronApp.setAppUserModelId('cz.hadik.claude-sessions')
+  electronApp.setAppUserModelId('cz.itsemilyjpg.clawdeen')
+  // Before anything draws: the tray, the menu and the first board all ask for words.
+  setLocale(settings().locale)
   app.on('browser-window-created', (_event, created) => optimizer.watchWindowShortcuts(created))
 
   ipcMain.handle('board', async () => latest ?? (await board()))
@@ -447,6 +449,13 @@ void app.whenReady().then(() => {
   })
   ipcMain.handle('order', async (_event, ids: string[]) => {
     await keepOrder(ids)
+    await refresh()
+  })
+  // The language outlives the run, so it is written down rather than asked of the system again, and
+  // the tray is rebuilt because its menu is already drawn in the language before this one.
+  ipcMain.handle('locale', async (_event, next: Locale) => {
+    saveSettings({ locale: next })
+    setLocale(next)
     await refresh()
   })
   // The window frame is not the page: the traffic lights and the colour behind an unpainted window
@@ -460,7 +469,7 @@ void app.whenReady().then(() => {
   const bar = nativeImage.createFromPath(trayIcon)
   bar.setTemplateImage(true)
   tray = new Tray(bar)
-  tray.setToolTip('Claude session')
+  tray.setToolTip('Clawdeen')
   tray.on('click', show)
 
   void hooksInstalled()
