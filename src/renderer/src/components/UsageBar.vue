@@ -1,10 +1,28 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { UsageWindow } from '../../../shared/types'
-import { burnVerdict, clock, decimal, doubtsOf, inWords, say } from '../words'
+import type { Spend, UsageWindow } from '../../../shared/types'
+import { burnVerdict, clock, decimal, doubtsOf, inWords, money, say } from '../words'
 
-const props = defineProps<{ windows: UsageWindow[]; compact?: boolean }>()
+const props = defineProps<{
+  windows: UsageWindow[]
+  spend?: Spend | null
+  compact?: boolean
+}>()
+
+/**
+ * What the credits have cost, or nothing.
+ *
+ * The amount alone, because the amount is all the endpoint stands behind: it says what has been
+ * spent, never that this stretch of work is what spent it. A window at 100 per cent is not what
+ * puts this on the board, and nothing here is drawn from one.
+ */
+const spent = computed(() =>
+  props.spend ? money(props.spend.used, props.spend.currency, props.spend.decimals) : null
+)
+
+/** Old numbers fade together: the badge was read out of the same answer as the gauges beside it. */
+const spendDoubted = computed(() => props.windows.some((window) => doubtsOf(window).length > 0))
 
 /**
  * The doubt belongs to the one file both windows were read from, not to either of them, so it is
@@ -74,6 +92,14 @@ function doubted(window: UsageWindow): boolean {
         >{{ ' · ' }}{{ until(window) }}
       </span>
     </span>
+    <!-- After the windows: it is the one figure here the plan does not cover, so it reads last. -->
+    <span
+      v-if="spent"
+      class="credits"
+      :class="{ doubted: spendDoubted }"
+      :title="say('creditsLong', spent)"
+      >{{ say('credits', spent) }}</span
+    >
     <span v-if="doubt" class="doubt">{{ doubt }}</span>
   </div>
 
@@ -100,6 +126,9 @@ function doubted(window: UsageWindow): boolean {
         >{{ rest(window) }}
       </div>
     </div>
+    <p v-if="spent" class="credits" :class="{ doubted: spendDoubted }">
+      {{ say('creditsLong', spent) }}
+    </p>
     <p v-if="doubt" class="doubt">{{ doubt }}</p>
   </section>
 </template>
@@ -193,6 +222,32 @@ function doubted(window: UsageWindow): boolean {
 .gauge.doubted .head b,
 .gauge.doubted .bar {
   opacity: 0.55;
+}
+
+/*
+ * A figure, not an alarm. The colours in this bar all mean how fast a window of the plan burns, and
+ * money spent outside the plan is not a fourth shade of that scale, so the badge is set off by its
+ * ground instead. `--warn` here would also be the second orange thing in a header that already says
+ * `neobnoveno:` in it.
+ */
+.credits {
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: var(--muted-soft);
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.credits.doubted {
+  opacity: 0.55;
+}
+
+.usage .credits {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin: 0;
 }
 
 /* Said once for the bar, so it may be as long as an address and still wrap rather than push. */

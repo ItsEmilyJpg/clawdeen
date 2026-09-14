@@ -26,6 +26,7 @@ type Filter = StateWord | 'pinned' | ''
 const board = ref<Board>({
   sessions: [],
   usage: [],
+  spend: null,
   order: [],
   today: [],
   at: 0,
@@ -456,7 +457,7 @@ onUnmounted(() => {
   <div class="shell">
     <header class="bar drag">
       <h1>Clawdeen</h1>
-      <UsageBar v-if="!expanded" :windows="board.usage" compact />
+      <UsageBar v-if="!expanded" :windows="board.usage" :spend="board.spend" compact />
       <!-- One group, so a window too narrow for the bar wraps the whole of it rather than
            stranding the cog on a row of its own. -->
       <div class="tools">
@@ -606,7 +607,7 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <UsageBar v-if="expanded" :windows="board.usage" />
+    <UsageBar v-if="expanded" :windows="board.usage" :spend="board.spend" />
 
     <p v-if="board.today.length > 0" class="today">
       <span class="what">{{ say('today') }}</span>

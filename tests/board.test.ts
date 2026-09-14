@@ -13,7 +13,7 @@ import {
   usageRows
 } from '../src/shared/words'
 import { inLane, LANE_WORDS, laneRows, STATE_CLASS } from '../src/renderer/src/words'
-import { asStateWord, everyStateWord, setLocale, stateWord } from '../src/shared/i18n'
+import { asStateWord, everyStateWord, money, setLocale, stateWord } from '../src/shared/i18n'
 import type { Change, Session, StateWord, UsageWindow } from '../src/shared/types'
 
 function change(over: Partial<Change> = {}): Change {
@@ -326,6 +326,31 @@ describe('the words a title can end with', () => {
     expect(stateWord('waiting-for-you')).toBe('čeká na tebe')
     setLocale('en')
     expect(stateWord('waiting-for-you')).toBe('waiting for you')
+  })
+})
+
+describe('money', () => {
+  // The space Czech puts before the symbol is a non-breaking one, written here as an escape so that
+  // nobody 'fixes' it into an ordinary space and spends an afternoon on two strings that look equal.
+  it('points the amount the way the language points it', () => {
+    setLocale('cs')
+    expect(money(38626, 'EUR', 2)).toBe('386,26 €')
+    setLocale('en')
+    expect(money(38626, 'EUR', 2)).toBe('€386.26')
+  })
+
+  it('counts in the places the answer gives, not in two by habit', () => {
+    setLocale('en')
+    expect(money(38626, 'USD', 0)).toBe('$38,626')
+    expect(money(38626, 'USD', 3)).toBe('$38.626')
+  })
+
+  // The currency comes off the wire, so a code Intl has never heard of is a thing that can arrive.
+  it('still says the amount when the currency is not one Intl knows', () => {
+    setLocale('cs')
+    expect(money(38626, 'kredit', 2)).toBe('386,26 kredit')
+    setLocale('en')
+    expect(money(38626, 'kredit', 2)).toBe('386.26 kredit')
   })
 })
 
