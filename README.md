@@ -150,7 +150,10 @@ npm run build:mac    # an unsigned .app in dist/mac-arm64
 npm test             # the reading rules: what a turn is, what is still running, what the checks say
 ```
 
-The build is not signed or notarised, so the first launch is a right click and **Open**.
+The build is signed ad-hoc and not notarised, because notarising asks for a developer account this
+project does not have. The first launch is a right click and **Open**. Ad-hoc is not a formality
+here: Apple silicon refuses a bundle whose signature does not check out, and what it tells whoever
+downloaded it is that the application is damaged, not that it is unsigned.
 
 ## What it does not know
 
