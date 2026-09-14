@@ -9,13 +9,16 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+afterPack: tools/build/adhoc-sign.js
 asarUnpack:
   - resources/**
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   target:
     - dir
-  # An unsigned build for this Mac alone; notarising asks for a developer account nobody here has.
+  # No developer account, so no real signature and no notarisation. The bundle is signed ad-hoc in
+  # afterPack instead, because Apple silicon refuses one whose signature does not check out and
+  # tells whoever downloaded it that the application is damaged.
   identity: null
   notarize: false
   extendInfo:

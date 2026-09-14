@@ -2,7 +2,8 @@
 // edit. Run with `npm run icons`; it renders the SVG below in an offscreen window and writes the
 // PNGs electron-builder and the tray read.
 const { app, BrowserWindow } = require('electron')
-const { writeFile, mkdir } = require('node:fs/promises')
+const { writeFile, mkdir, rm } = require('node:fs/promises')
+const { execFileSync } = require('node:child_process')
 const { join } = require('node:path')
 
 const root = join(__dirname, '..', '..')
@@ -103,6 +104,24 @@ async function draw(svg, wide, tall, path) {
   console.log(`${path} ${image.getSize().width}×${image.getSize().height}`)
 }
 
+/**
+ * macOS reads `.icns`, and electron-builder prefers it over the PNG beside it, so an .icns nobody
+ * regenerated is the icon the application actually ships. That is exactly what happened: the PNG
+ * was redrawn and the bundle kept the old picture, because this script only ever wrote PNGs.
+ */
+async function icns(path) {
+  const set = join(app.getPath('temp'), 'clawdeen.iconset')
+  await rm(set, { recursive: true, force: true })
+  await mkdir(set, { recursive: true })
+  for (const size of [16, 32, 128, 256, 512]) {
+    await draw(appIcon(size), size, size, join(set, `icon_${size}x${size}.png`))
+    await draw(appIcon(size * 2), size * 2, size * 2, join(set, `icon_${size}x${size}@2x.png`))
+  }
+  execFileSync('iconutil', ['-c', 'icns', set, '-o', path])
+  await rm(set, { recursive: true, force: true })
+  console.log(`${path} from the same drawing`)
+}
+
 app.whenReady().then(async () => {
   await open()
   await draw(appIcon(1024), 1024, 1024, join(root, 'build', 'icon.png'))
@@ -110,6 +129,7 @@ app.whenReady().then(async () => {
   await draw(trayIcon(18), 18, 18, join(root, 'resources', 'trayTemplate.png'))
   await draw(trayIcon(36), 36, 36, join(root, 'resources', 'trayTemplate@2x.png'))
   await draw(banner(), 1280, 300, join(root, 'docs', 'banner.png'))
+  await icns(join(root, 'build', 'icon.icns'))
   sheet.destroy()
   app.exit(0)
 })

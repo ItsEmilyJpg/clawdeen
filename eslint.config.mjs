@@ -18,7 +18,9 @@ export default defineConfig(
       '.claude/**',
       'tools/icons/**',
       'tools/hook/**',
-      'tools/gate/**'
+      'tools/gate/**',
+      // electron-builder loads its hooks with require, so this one has no choice about being CommonJS.
+      'tools/build/**'
     ]
   },
   tseslint.configs.recommended,
