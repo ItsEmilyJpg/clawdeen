@@ -8,12 +8,38 @@
 set -uo pipefail
 
 input=$(cat)
-case "$input" in
+gates="$(dirname "$0")/../../tools/gate"
+
+# What the shell would actually run, rather than every word in the call. A commit message that talks
+# about staging is text, not a command, and reading the payload raw refused commits for describing
+# what they did. `command.py` is what both gates already use to tell the two apart; where it cannot
+# answer, the whole payload stands in, because a gate that reads nothing must not wave things past.
+command=$(printf '%s' "$input" | python3 "$gates/command.py" 2>/dev/null)
+[ -n "$command" ] || command=$input
+
+case "$command" in
   *'git commit'*) ;;
   *) exit 0 ;;
 esac
 
-cd "$(dirname "$0")/../.." || exit 0
+# Staging and committing in one call defeats the stamp entirely. This hook runs before the command,
+# so it reads the tree as it stood before any staging in that same call had happened, and the check
+# then proves a tree nobody is committing. Found by planting a change and watching it land.
+case "$command" in
+  *'git add'*|*'commit -a'*|*'commit --all'*|*'commit -am'*)
+    echo "Commit gate: this call stages and commits at once, and the gate runs before it." >&2
+    echo "  It would read the tree as it stood before the staging, and prove the wrong one." >&2
+    echo "  Stage, run 'npm run check', then commit, as three separate calls." >&2
+    exit 2
+    ;;
+esac
+
+# Where the command actually goes, which is not where the hook is standing. A session working in a
+# worktree is handed the main checkout as its directory, so without this the gate compared the stamp
+# of one tree against the index of another and refused a commit that was green.
+here=$(printf '%s' "$input" | python3 "$gates/where.py" 2>/dev/null)
+root=$(git -C "${here:-.}" rev-parse --show-toplevel 2>/dev/null) || root="$(dirname "$0")/../.."
+cd "$root" || exit 0
 
 message=$(printf '%s' "$input" | python3 tools/gate/message.py 2>&1)
 if [ $? -eq 3 ]; then
