@@ -255,6 +255,11 @@ interface Phrases {
   ownOrderUndo: string
   atTime: string
   pace: string
+  noKeychainLogin: string
+  keychainUnreadable: string
+  tokenExpired: string
+  usageStatus: string
+  usageEmpty: string
 }
 
 const PHRASES: Record<Locale, Phrases> = {
@@ -380,7 +385,12 @@ const PHRASES: Record<Locale, Phrases> = {
     pinnedCount: 'pinned',
     ownOrderUndo: 'own order ×',
     atTime: 'at {n}',
-    pace: 'pace {n}×'
+    pace: 'pace {n}×',
+    noKeychainLogin: 'the Keychain holds no login, `claude /login` helps',
+    keychainUnreadable: 'the login in the Keychain cannot be read',
+    tokenExpired: 'the token expired, the renewal is left to Claude Code',
+    usageStatus: 'usage answered {n}',
+    usageEmpty: 'usage returned no window'
   },
   cs: {
     justNow: 'právě teď',
@@ -504,7 +514,12 @@ const PHRASES: Record<Locale, Phrases> = {
     pinnedCount: 'připnuté',
     ownOrderUndo: 'vlastní pořadí ×',
     atTime: 'v {n}',
-    pace: 'tempo {n}×'
+    pace: 'tempo {n}×',
+    noKeychainLogin: 'Keychain nemá přihlášení, pomůže `claude /login`',
+    keychainUnreadable: 'přihlášení v Keychainu se nedá přečíst',
+    tokenExpired: 'token vypršel, obnovu nechávám Claude Code',
+    usageStatus: 'usage odpovědělo {n}',
+    usageEmpty: 'usage nevrátilo žádné okno'
   }
 }
 
