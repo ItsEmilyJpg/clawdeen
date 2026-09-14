@@ -322,7 +322,7 @@ def already_warned(payload, key):
     if not session:
         return True
     digest = hashlib.sha1(key.encode()).hexdigest()
-    path = os.path.join(tempfile.gettempdir(), 'claude-vellum-post-gate-warned-%s' % session)
+    path = os.path.join(tempfile.gettempdir(), 'clawdeen-post-gate-warned-%s' % session)
     try:
         seen = open(path, encoding='utf-8').read().split()
     except OSError:

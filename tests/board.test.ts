@@ -337,11 +337,11 @@ describe('openSession', () => {
 
 describe('repoColour', () => {
   it('gives one repository the same colour every time', () => {
-    expect(repoColour('vellum')).toBe(repoColour('vellum'))
+    expect(repoColour('clawdeen')).toBe(repoColour('clawdeen'))
   })
 
   it('tells the repositories on this machine apart', () => {
-    const names = ['vellum', 'claude-sessions', 'singlecase']
+    const names = ['clawdeen', 'notes', 'website']
     expect(new Set(names.map(repoColour)).size).toBe(names.length)
   })
 

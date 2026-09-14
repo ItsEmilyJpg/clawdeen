@@ -1,4 +1,4 @@
-# Claude session
+# Clawdeen
 
 A board of the Claude Code sessions on this Mac: what each one is doing, where its pull request
 stands, and what is left of the usage windows. It lives in the menu bar, notifies when a session
@@ -70,7 +70,7 @@ taken before the wait for a free slot and the registry only after it, which is h
 `gate ve frontě` are told apart.
 
 ```json
-{ "registry": "${TMPDIR}/vellum-gates", "lock": "var/check.lock" }
+{ "registry": "${TMPDIR}/clawdeen-gates", "lock": "var/check.lock" }
 ```
 
 `~/.config/claude-sessions/jira.json` — tracker key to base URL, for sessions whose work is not on

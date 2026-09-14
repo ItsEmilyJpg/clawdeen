@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { randomBytes } from 'node:crypto'
+import { chmod, mkdir, writeFile } from 'node:fs/promises'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { dirname } from 'node:path'
 
 import { LIVE } from './paths'
@@ -48,9 +48,17 @@ async function readBody(request: IncomingMessage): Promise<string> {
  */
 export async function listen(changed: () => void): Promise<void> {
   const token = randomBytes(24).toString('hex')
+  const expected = Buffer.from(token, 'utf8')
+  // The token is the only thing guarding this port, so it is compared in constant time. Its length
+  // is fixed and no secret, which is why that may be checked first.
+  const authorised = (given: string | string[] | undefined): boolean =>
+    typeof given === 'string' &&
+    Buffer.byteLength(given) === expected.length &&
+    timingSafeEqual(Buffer.from(given, 'utf8'), expected)
+
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     void (async () => {
-      if (request.method !== 'POST' || request.headers['x-board-token'] !== token) {
+      if (request.method !== 'POST' || !authorised(request.headers['x-board-token'])) {
         response.writeHead(404).end()
         return
       }
@@ -74,7 +82,10 @@ export async function listen(changed: () => void): Promise<void> {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (address === null || typeof address === 'string') return
-  await mkdir(dirname(LIVE), { recursive: true })
+  await mkdir(dirname(LIVE), { recursive: true, mode: 0o700 })
   await writeFile(LIVE, JSON.stringify({ port: address.port, token }), { mode: 0o600 })
+  // writeFile applies its mode only when it creates the file, so an existing live.json would keep
+  // whatever permissions it already had and the token would land in a readable one.
+  await chmod(LIVE, 0o600)
   console.log(`live events on 127.0.0.1:${address.port}`)
 }
