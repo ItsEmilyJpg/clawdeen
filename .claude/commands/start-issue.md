@@ -18,7 +18,7 @@ git branch --list "*$1*"
 An issue on this board is usually already running somewhere: a branch named after its number, a
 worktree holding it, a session with a shell open in that worktree. If any of those exist, **stop and
 say so** rather than starting a second copy. Two sessions on one issue means one of them gets thrown
-away, and which one is Emily's call, not yours.
+away, and which one is the developer's call, not yours.
 
 A closed issue is the same kind of stop.
 

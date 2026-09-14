@@ -7,7 +7,8 @@ a title come from.
 ## The last segment is ours
 
 The state at the end of a title is one of the words in `src/shared/types.ts`, computed off the pull
-request by `~/dotfiles/bin/claude-sessions --hook` and handed to the session as text. It is copied,
+request by the hook that names sessions, which lives outside this repository, and handed to the
+session as text. It is copied,
 never chosen, so two sessions in the same place read the same. **A sixth word is not invented for a
 title**, and a word the hook did not hand over is left out rather than guessed, exactly as an empty
 chip beats a guessed one on the board itself.
