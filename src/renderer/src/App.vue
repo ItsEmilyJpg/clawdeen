@@ -42,6 +42,20 @@ const dragged = ref<string | null>(null)
 const reading = ref<string | null>(null)
 /** Which card is unfolded and where it sat when it was: the sheet opens over its own row. */
 const opened = ref<{ id: string; left: number; top: number } | null>(null)
+/**
+ * Which row has its menu open, by session rather than by row.
+ *
+ * The row cannot hold this. A board lands roughly four hundred milliseconds after any session on
+ * the machine writes a line, and the row it draws is reordered, in workflow moved between lanes and
+ * there rebuilt from nothing. Held in the row, the menu went with it: measured in the running
+ * window, open, then gone inside the next sweep without the mouse having moved.
+ */
+const acting = ref<string | null>(null)
+
+/** One menu at a time, and the dot that opened it closes it again. */
+function toggleActs(id: string): void {
+  acting.value = acting.value === id ? null : id
+}
 const field = ref<HTMLInputElement | null>(null)
 /** Seconds on the clock: a choice like the others, and it outlives the window like the others. */
 const ticking = ref(remembered('ticking') === '1')
@@ -268,6 +282,9 @@ async function openSettings(): Promise<void> {
 
 /** A click anywhere but inside the menu closes it, which is what a menu that stays open needs. */
 function outside(event: MouseEvent): void {
+  // The dot and the two entries under it stop their own clicks, so whatever reaches the window is
+  // somewhere else on the board, and somewhere else is what closes a row's menu.
+  acting.value = null
   if (!settings.value) return
   const target = event.target as Node | null
   if (target && !cog.value?.contains(target)) settings.value = false
@@ -377,7 +394,14 @@ const unfolded = computed(() =>
 /** The chat is the other pane, not a second layer over this one, so unfolding gives way to it. */
 function toTheChat(id: string): void {
   opened.value = null
+  acting.value = null
   reading.value = id
+}
+
+/** What the menu was opened for is now on the screen, so the menu itself has nothing left to say. */
+function unfold(id: string, spot: { left: number; top: number }): void {
+  acting.value = null
+  opened.value = { id, ...spot }
 }
 
 /** The board is driven from the keyboard too: the search field is a shortcut away, escape clears it. */
@@ -390,6 +414,10 @@ function onKey(event: KeyboardEvent): void {
   }
   if (event.key !== 'Escape') return
   // The menu is the innermost thing open, so escape closes it before it reaches anything else.
+  if (acting.value) {
+    acting.value = null
+    return
+  }
   if (settings.value) {
     settings.value = false
     return
@@ -651,8 +679,10 @@ onUnmounted(() => {
             laned
             :project="project"
             :mark-focus="markFocus"
-            @peek="reading = session.id"
-            @detail="opened = { id: session.id, ...$event }"
+            :acting="acting === session.id"
+            @acts="toggleActs(session.id)"
+            @peek="toTheChat(session.id)"
+            @detail="unfold(session.id, $event)"
           />
         </ul>
       </section>
@@ -667,10 +697,12 @@ onUnmounted(() => {
         :dragging="dragged === session.id"
         :project="project"
         :mark-focus="markFocus"
+        :acting="acting === session.id"
         @grab="dragged = session.id"
         @drop="drop(session)"
-        @peek="reading = session.id"
-        @detail="opened = { id: session.id, ...$event }"
+        @acts="toggleActs(session.id)"
+        @peek="toTheChat(session.id)"
+        @detail="unfold(session.id, $event)"
       />
       <li v-if="shown.length === 0" class="empty">{{ say('nothingMatches') }}</li>
     </ul>

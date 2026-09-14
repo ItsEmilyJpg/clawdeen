@@ -176,6 +176,15 @@ async function activity(
       )
   const beside = gate ?? (doing && doing.doing !== 'watching' ? DOING[doing.doing] : null)
   const since = gate ? null : (doing?.since ?? null)
+  /**
+   * When a wait began, read off the transcript rather than remembered.
+   *
+   * A wait is silence, and the last line written is where the silence starts: a session that has
+   * asked something writes nothing more until she answers, so the file's own time is the moment it
+   * stopped. Remembering it across sweeps would need the board to keep state it cannot prove, and a
+   * restart would forget it; the file survives both.
+   */
+  const quiet = now - age
 
   // What a hook said beats what the files say: the hooks are the fast path, the files answer when
   // nothing is listening. The app saying it needs her is the one thing no file says at all.
@@ -192,7 +201,7 @@ async function activity(
 
   // Both can be true at once, and then what Claude is doing is the state while the gate rides
   // beside it: a session answering is working, even with a check queueing behind it.
-  if (asking) return { word: 'waiting-for-you', since: null, extra: beside }
+  if (asking) return { word: 'waiting-for-you', since: quiet, extra: beside }
   if (working) return { word: 'working', since, extra: beside }
   if (beside) return { word: beside, since, extra: null }
   // A monitor is a wait on something with a name, and the row says which: a run, an issue, or
@@ -208,7 +217,7 @@ async function activity(
     return { word, since: null, extra: null }
   }
   if (age > WAITING_SECONDS || turn === 'running' || turn === 'blocked') return nothing
-  return { word: 'waiting-for-you', since: null, extra: null, idle: true }
+  return { word: 'waiting-for-you', since: quiet, extra: null, idle: true }
 }
 
 /**
