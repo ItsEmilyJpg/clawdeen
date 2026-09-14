@@ -66,7 +66,7 @@ it.
 
 ## Configuration
 
-Both files are optional and live outside this repository, because what they point at is not
+These files are optional and live outside this repository, because what they point at is not
 everyone's. They live in `~/.config/clawdeen/`, and an install made before the board was called
 Clawdeen is read from `~/.config/claude-sessions/` where that directory is the one that exists.
 
@@ -83,6 +83,18 @@ GitHub.
 
 ```json
 { "ABC": "https://example.atlassian.net/browse/" }
+```
+
+`~/.config/clawdeen/private-names.json` — words that must never reach a commit. `npm run check`
+refuses a tree carrying one of them, and proves every pattern against its own canary first, because
+a regex that stopped matching reads exactly like a repository with nothing to hide. The list is kept
+out here rather than in the repository for the obvious reason: a gate that forbids a word has to
+spell that word out, and a list committed here would publish what it was built to keep back.
+`tools/gate/private-names.example.json` shows the shape. Without the file the check says so plainly
+and passes, rather than reading as a clean tree.
+
+```json
+[{ "name": "employer", "pattern": "examplecorp", "flags": "i", "canary": "ExampleCorp" }]
 ```
 
 ## Running it

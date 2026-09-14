@@ -3,8 +3,13 @@
  * Refuses a tree that carries a name from outside this project.
  *
  * The repository is public, so a private repository name, a tracker key or a personal host reaching
- * a commit is not untidiness, it is disclosure, and git keeps it after the fix. The list below is
- * the whole vocabulary the gate knows: add to it rather than trusting anyone to remember.
+ * a commit is not untidiness, it is disclosure, and git keeps it after the fix.
+ *
+ * The vocabulary is deliberately NOT in here. A gate that forbids a word has to spell that word out,
+ * so a list kept in the repository publishes exactly what it was built to keep back: the first
+ * version of this file carried a real mailbox, a real ticket number and two real hostnames straight
+ * into a public commit. The list lives beside the application's own configuration instead, outside
+ * every checkout, and `private-names.example.json` shows its shape with invented values.
  *
  * Every entry carries a canary, and the gate proves each pattern against its own canary before it
  * reports a clean tree. A regex that silently stopped matching would otherwise read exactly like a
@@ -12,17 +17,13 @@
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { extname, relative } from 'node:path'
+import { homedir } from 'node:os'
+import { extname, join, relative } from 'node:path'
 
-/** Names that must never appear in a tracked file, each with a string it has to catch. */
-const FORBIDDEN = [
-  { name: 'vellum', pattern: /vellum/i, canary: 'Vellum' },
-  { name: 'singlecase', pattern: /singlecase/i, canary: 'SingleCase' },
-  { name: 'tracker key', pattern: /\bSIN-\d+/i, canary: 'SIN-19957' },
-  { name: 'private host', pattern: /[\w-]+\.hadik\.cz/i, canary: 'finance.dev.hadik.cz' },
-  { name: 'personal mailbox', pattern: /hadikcze|@singlecase\.cz/i, canary: 'hadikcze@gmail.com' },
-  { name: 'home directory', pattern: /\/Users\/hadik\b/, canary: '/Users/hadik/dev' },
-  { name: 'private platform', pattern: /dokploy|coolify/i, canary: 'dokploy.dev.hadik.cz' }
+/** The same two directories the application reads, newest name first. */
+const LISTS = [
+  join(homedir(), '.config/clawdeen/private-names.json'),
+  join(homedir(), '.config/claude-sessions/private-names.json')
 ]
 
 /** Nothing here can be read as text, so the gate says so rather than counting it as clean. */
@@ -31,14 +32,44 @@ const OPAQUE = new Set(['.png', '.icns', '.ico', '.jpg', '.jpeg', '.gif', '.pdf'
 const root = process.cwd()
 const self = relative(root, new URL(import.meta.url).pathname)
 
+/**
+ * The vocabulary, or null where nobody has written one. Null is not the same as an empty list: the
+ * first means the gate is guarding nothing and has to say so, the second is a deliberate choice.
+ */
+function vocabulary() {
+  for (const path of LISTS) {
+    if (!existsSync(path)) continue
+    let entries
+    try {
+      entries = JSON.parse(readFileSync(path, 'utf8'))
+    } catch (error) {
+      console.error(`private-names: ${path} cannot be read: ${error.message}`)
+      process.exit(2)
+    }
+    if (!Array.isArray(entries)) {
+      console.error(`private-names: ${path} is not a list of entries`)
+      process.exit(2)
+    }
+    return {
+      path,
+      entries: entries.map((entry) => ({
+        name: entry.name,
+        canary: entry.canary,
+        pattern: new RegExp(entry.pattern, entry.flags ?? '')
+      }))
+    }
+  }
+  return null
+}
+
 function tracked() {
   const out = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
   return out.split('\0').filter(Boolean)
 }
 
 /** A pattern that cannot catch its own canary is broken, and a broken gate passes everything. */
-function provePatterns() {
-  const broken = FORBIDDEN.filter((entry) => !entry.pattern.test(entry.canary))
+function provePatterns(entries) {
+  const broken = entries.filter((entry) => !entry.pattern.test(entry.canary))
   if (broken.length === 0) return
   for (const entry of broken) {
     console.error(`private-names: pattern "${entry.name}" no longer matches its own canary`)
@@ -46,11 +77,11 @@ function provePatterns() {
   process.exit(2)
 }
 
-function scan() {
+function scan(entries) {
   const hits = []
   const unread = []
   for (const file of tracked()) {
-    // The gate spells the forbidden words out, so scanning it would always fail.
+    // The gate reads the forbidden words into itself, so scanning it would always fail.
     if (file === self) continue
     // Still tracked but already deleted: naming it as unread would ask for an eye on nothing.
     if (!existsSync(file)) continue
@@ -66,7 +97,7 @@ function scan() {
       continue
     }
     text.split('\n').forEach((line, index) => {
-      for (const entry of FORBIDDEN) {
+      for (const entry of entries) {
         if (entry.pattern.test(line)) hits.push({ file, line: index + 1, name: entry.name })
       }
     })
@@ -74,8 +105,19 @@ function scan() {
   return { hits, unread }
 }
 
-provePatterns()
-const { hits, unread } = scan()
+const list = vocabulary()
+
+// Said as loudly as a failure and still green: a check that refused every fresh clone would be
+// deleted within the week, and a check that says nothing at all would be trusted for what it is not.
+if (list === null) {
+  console.log('private-names: NO LIST CONFIGURED, so nothing at all is being checked.')
+  console.log(`  Write one at ${LISTS[0]}`)
+  console.log('  tools/gate/private-names.example.json shows the shape.')
+  process.exit(0)
+}
+
+provePatterns(list.entries)
+const { hits, unread } = scan(list.entries)
 
 if (unread.length > 0) {
   console.log(`private-names: ${unread.length} file(s) not readable as text, judge these by eye:`)
@@ -88,4 +130,6 @@ if (hits.length > 0) {
   process.exit(1)
 }
 
-console.log(`private-names: clean, ${FORBIDDEN.length} patterns each proved against its canary`)
+console.log(
+  `private-names: clean, ${list.entries.length} patterns each proved against its canary (${list.path})`
+)
