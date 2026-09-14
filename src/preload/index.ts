@@ -11,6 +11,9 @@ const api = {
   theme: (mode: ThemeMode): Promise<void> => ipcRenderer.invoke('theme', mode),
   // Which language the board speaks. It is kept by the main process, because the page keeps nothing.
   locale: (next: Locale): Promise<void> => ipcRenderer.invoke('locale', next),
+  // Which repositories the board draws; the count in the tray is not affected by it on purpose.
+  hide: (project: string, shown: boolean): Promise<void> =>
+    ipcRenderer.invoke('hide', project, shown),
   order: (ids: string[]): Promise<void> => ipcRenderer.invoke('order', ids),
   chat: (cli: string): Promise<Line[]> => ipcRenderer.invoke('chat', cli),
   onBoard: (listen: (board: Board) => void): (() => void) => {

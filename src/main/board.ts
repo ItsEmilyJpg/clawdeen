@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
 import { everyStateWord, locale, say } from '../shared/i18n'
+import { settings } from './settings'
 import type { ActivityWord, Board, Change, Link, Session, StateWord } from '../shared/types'
 import { JIRA_MAP } from './paths'
 import { gateState, gates, type GateConfig } from './gate'
@@ -279,6 +280,9 @@ async function describe(
     issue = jiraIssue([change?.branch, ...branches(record), record.title], trackers)
   }
   const last = (record.lastActivityAt ?? 0) / 1000
+  // The repository, from the forge path where there is one and from the working copy where there is
+  // not. The same name labels the card and answers the project filter, so it is worked out once.
+  const named = (project ?? root).replace(/\/$/, '').split('/').at(-1) ?? ''
   const title = (record.title ?? say('untitled')).split(/\s+/).join(' ')
   const state = displayState(change)
   const word = waitingOn(doing, change)
@@ -287,12 +291,8 @@ async function describe(
     cli: record.cliSessionId ?? '',
     title,
     headline: headline(title, [issue, change], state),
-    place: [
-      (project ?? root).replace(/\/$/, '').split('/').at(-1),
-      record.worktreeName ?? record.branch
-    ]
-      .filter(Boolean)
-      .join(' · '),
+    place: [named, record.worktreeName ?? record.branch].filter(Boolean).join(' · '),
+    project: named,
     last,
     active: now - last < ACTIVE_SECONDS,
     issue,
@@ -358,12 +358,18 @@ export async function board(): Promise<Board> {
       other.last - one.last
   )
   record(sessions, now)
+  // Every repository the window holds, named once and sorted, so the settings can list them without
+  // taking a label apart. The sessions themselves are handed over whole: hiding one is the window's
+  // business, and the tray counts what the board knows rather than what it draws.
+  const projects = [...new Set(sessions.map((session) => session.project).filter(Boolean))].sort()
   return {
     sessions,
     usage: await usage(now),
     order: kept,
     today: today(now),
     at: now,
-    locale: locale()
+    locale: locale(),
+    projects,
+    hidden: settings().hidden
   }
 }

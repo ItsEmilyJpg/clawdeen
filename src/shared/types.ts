@@ -89,6 +89,8 @@ export interface Session {
   title: string
   headline: string
   place: string
+  /** The repository the session works in, which is what a project filter hides or shows. */
+  project: string
   last: number
   active: boolean
   issue: Link | null
@@ -162,4 +164,11 @@ export interface Board {
   at: number
   /** The language the window draws in. The renderer reads no settings of its own. */
   locale: Locale
+  /** Every repository seen in the window, so the settings can offer them without parsing labels. */
+  projects: string[]
+  /**
+   * The repositories the window does not draw. Kept as what is hidden rather than what is shown, so
+   * a repository opened for the first time appears on its own instead of waiting to be allowed.
+   */
+  hidden: string[]
 }
