@@ -154,14 +154,30 @@ configuration, and reading the files stays the fallback for everything the board
 npm install
 npm run dev          # the window, with reload
 npm run icons        # redraws the application and tray icons from the SVG in tools/icons
-npm run build:mac    # an unsigned .app in dist/mac-arm64
+npm run build:mac    # an ad-hoc signed .app in dist/mac-arm64
 npm test             # the reading rules: what a turn is, what is still running, what the checks say
 ```
 
 The build is signed ad-hoc and not notarised, because notarising asks for a developer account this
-project does not have. The first launch is a right click and **Open**. Ad-hoc is not a formality
-here: Apple silicon refuses a bundle whose signature does not check out, and what it tells whoever
-downloaded it is that the application is damaged, not that it is unsigned.
+project does not have. Ad-hoc is not a formality here: Apple silicon refuses a bundle whose
+signature does not check out, and what it tells whoever downloaded it is that the application is
+damaged, not that it is unsigned.
+
+### Opening a downloaded build
+
+What a valid signature does not answer is Gatekeeper, which asks for notarisation instead, so a copy
+that came through a browser is refused on the first launch. **Right click and Open is not the way
+round it any more.** That path is gone on macOS 26, and what is offered instead is `Open Anyway`
+under System Settings, Privacy & Security, followed by an administrator password.
+
+The shorter way is to take off the flag the browser set, which is what macOS looks at:
+
+```bash
+mv ~/Downloads/Clawdeen.app /Applications/ && xattr -dr com.apple.quarantine /Applications/Clawdeen.app
+```
+
+Either is per copy, so the next download asks again. A build made from this checkout never carries
+the flag at all and opens on a double click, because nothing downloaded it.
 
 ## What it does not know
 
