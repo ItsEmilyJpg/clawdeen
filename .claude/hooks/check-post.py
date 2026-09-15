@@ -59,6 +59,9 @@ CAT_FILE = re.compile(r'\$\(\s*(?:cat|<)\s+([^)\s]+)\s*\)')
 INPUT_FILE = re.compile(r'--input[=\s]+([^\s]+)')
 BODY_FILE = re.compile(r'--body-file[=\s]+([^\s]+)')
 AT_FILE = re.compile(r'=@([^\s\'"]+)')
+# backticks are how the chat marks an exact text, and a title is short enough that it never gets a
+# line of its own: without this, `**Title:** `Call it 1.0.2`` read as prose and the title never counted
+CODE_SPAN = re.compile(r'`([^`\n]+)`')
 # a harness row arrives as a user turn nobody typed: a task notification, a session reminder.
 # Matching the shape rather than a list also catches the next one.
 HARNESS_ROW = re.compile(r'^<([a-z][a-z0-9-]*)>')
@@ -278,12 +281,59 @@ def is_human_input(row, ask_ids):
                for c in content)
 
 
-def shown_before_last_input(transcript):
+def shown_lines(text):
+    """Every line of an assistant message, and every inline code span as a line of its own."""
+    for line in text.splitlines():
+        yield line
+        for span in CODE_SPAN.findall(line):
+            yield span
+
+
+def input_kind(row):
+    """How the developer spoke, so a refusal can say which turn it measured against."""
+    content = (row.get('message') or {}).get('content')
+    if isinstance(content, list):
+        if any(isinstance(c, dict) and c.get('type') == 'tool_result' for c in content):
+            return 'an %s answer' % ASK_TOOL
+        for c in content:
+            if isinstance(c, dict) and c.get('type') == 'text':
+                tag = HARNESS_ROW.match((c.get('text') or '').strip())
+                if tag:
+                    return 'a <%s> they pressed' % tag.group(1)
+    return 'a typed message'
+
+
+class Evidence:
+    """What the developer was shown before their last input, and where the gate read it.
+
+    The reading is carried rather than recomputed so a refusal can name the file, the rows and the
+    turn it measured against: four refusals in a row were spent guessing at exactly that.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.rows = 0
+        self.lines = []
+        self.seen = ''
+        self.last_input = None
+        self.last_input_kind = ''
+
+    def where(self):
+        if not self.rows:
+            return 'no transcript was available to the gate'
+        at = ('the developer\'s last input at row %d (%s)' % (self.last_input, self.last_input_kind)
+              if self.last_input is not None else 'no input from the developer')
+        return '%d characters over %d rows of %s, up to %s' % (len(self.seen), self.rows, self.path, at)
+
+
+def read_evidence(transcript):
     """Assistant text written before the developer's most recent input, one normalised line each."""
+    evidence = Evidence(transcript)
     ask_ids = set()
     shown = []
     approved = []
-    for row in rows_of(transcript):
+    for index, row in enumerate(rows_of(transcript)):
+        evidence.rows = index + 1
         message = row.get('message') or {}
         if row.get('type') == 'assistant' or message.get('role') == 'assistant':
             content = message.get('content')
@@ -300,21 +350,25 @@ def shown_before_last_input(transcript):
             continue
         if is_human_input(row, ask_ids):
             approved = list(shown)
-    return [normalise(line) for text in approved for line in text.splitlines()]
+            evidence.last_input = index
+            evidence.last_input_kind = input_kind(row)
+    evidence.lines = [normalise(line) for text in approved for line in shown_lines(text)]
+    # the same string was_shown searches, so a count printed in a refusal and a count taken by hand
+    # cannot disagree and send someone hunting for a message that was never missing
+    evidence.seen = ' '.join(line for line in evidence.lines if line)
+    return evidence
 
 
-def was_shown(body, transcript):
+def was_shown(body, evidence):
     text = normalise(body)
     if not text:
         return False
-    lines = shown_before_last_input(transcript)
     # a short reply ("Done.") would match inside any sentence, so it has to have been a line of
-    # its own in the chat
+    # its own in the chat, or marked as exact with backticks
     if len(text) < MIN_EVIDENCE:
-        return text in lines
-    seen = ' '.join(line for line in lines if line)
+        return text in evidence.lines
     head, tail = text[:80], text[-80:]
-    return head in seen or tail in seen
+    return head in evidence.seen or tail in evidence.seen
 
 
 def already_warned(payload, key):
@@ -343,6 +397,14 @@ def main():
         return 0
     command = shared.without_bodies((payload.get('tool_input') or {}).get('command', ''))
     if 'gh' not in command:
+        return 0
+
+    # What the shell would actually run, rather than every word in the call: a command that merely
+    # names `gh pr create` inside quotes is text. The commit gate already reads through `command.py`
+    # for the same reason. Only the entry test uses it, because stripping the quotes also strips the
+    # body the rest of the gate has to read back.
+    if not any(classify(m.group(1))[0] != 'ignore'
+               for m in GH_SEGMENT.finditer(shared.without_quoted_data(command))):
         return 0
 
     # Every gh segment is judged on its own, so a batch of posts cannot hide an unseen body behind
@@ -416,18 +478,28 @@ def check_segment(segment, what, verdict, command, transcript, payload):
 
     # every text is judged on its own, so a review cannot hide one unseen inline comment among
     # ten that were read
-    if bodies and all(was_shown(body, transcript) for body in bodies):
+    evidence = read_evidence(transcript) if transcript and os.path.exists(transcript) else Evidence(transcript)
+    unseen = [body for body in bodies or () if not was_shown(body, evidence)]
+    if bodies and not unseen:
         return 0
 
-    # Says whether the transcript was readable at all, so a missing transcript_path in the hook
-    # payload shows up as itself rather than as a text that was never shown.
-    seen_chars = sum(len(l) for l in shown_before_last_input(transcript)) if transcript and os.path.exists(transcript) else -1
-    where = ('checked %d characters shown before it' % seen_chars) if seen_chars >= 0 else 'no transcript was available to the gate'
+    # Which text failed, not just that one did: a title beside a body file is two texts, and a
+    # refusal that says "the text" sends the agent back to re-show the one that already passed.
+    opening = next((line.strip() for line in unseen[0].splitlines() if line.strip()), '') if unseen else ''
     sys.stderr.write(
-        'Post gate: the text %s is about to post does not appear in anything shown to the developer '
-        'before their last message (%s). Put the exact text in the chat, wait for their answer, then '
-        'repeat the command. AGENTS.md section 1: the developer owns every word posted under their '
-        'name.\n' % (what, where))
+        'Post gate: %s is about to post %d text%s and %d of them %s never shown to the developer '
+        'before their last message.\n'
+        % (what, len(bodies), '' if len(bodies) == 1 else 's', len(unseen),
+           'was' if len(unseen) == 1 else 'were'))
+    sys.stderr.write('  The one that failed begins: %s\n' % (opening[:70] or '(empty)'))
+    if unseen and len(normalise(unseen[0])) < MIN_EVIDENCE:
+        sys.stderr.write(
+            '  It is under %d characters, so it counts only as a line of its own or inside backticks, '
+            'never as part of a sentence.\n' % MIN_EVIDENCE)
+    sys.stderr.write('  Evidence: %s\n' % evidence.where())
+    sys.stderr.write(
+        '  Put that exact text in the chat, wait for their answer, then repeat the command. AGENTS.md '
+        'section 1: the developer owns every word posted under their name.\n')
     return 2
 
 
