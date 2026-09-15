@@ -29,7 +29,7 @@
     "hook:install": "node tools/hook/install.mjs",
     "hook:remove": "node tools/hook/install.mjs --remove",
     "private-names": "node tools/gate/private-names.mjs",
-    "gate": "python3 tools/gate/message_test.py",
+    "gate": "python3 tools/gate/message_test.py && python3 tools/gate/post_test.py",
     "check": "npm run typecheck && npm run lint && npm test && npm run gate && npm run private-names && node tools/gate/stamp.mjs"
   },
   "dependencies": {

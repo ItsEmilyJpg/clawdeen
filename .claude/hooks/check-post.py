@@ -14,10 +14,12 @@ replied, then post; anything else is blocked. The body is read from `--body-file
 resolved, the command is blocked with the recipe to make it checkable.
 
 Actions a person takes themselves are refused outright, no override: merge, close, reopen,
-approve, dispatching a workflow (production deploys that way), any DELETE, and anything under
-`gh release`, `gh repo`, `gh secret`, `gh variable` or `gh ruleset` that writes. A metadata-only
-change with no text (labels, reviewers, draft state) blocks once and goes through on the identical
-repeat, the same channel the commit gate uses for warnings.
+approve, dispatching a workflow (production deploys that way), any DELETE but the two that take
+metadata off, and anything under `gh release`, `gh repo`, `gh secret`, `gh variable` or
+`gh ruleset` that writes. A metadata-only change with no text (labels, reviewers, draft state)
+blocks once and goes through on the identical repeat, the same channel the commit gate uses for
+warnings, and that holds for taking a label or a requested reviewer off as much as for putting one
+on.
 
 Exit 2 blocks the command and the reason on stderr reaches the agent.
 """
@@ -42,6 +44,9 @@ ASK_TOOL = 'AskUserQuestion'
 GH_SEGMENT = re.compile(r'(?:^|&&|\|\||;|\||[{(]|\bthen\b|\bdo\b|\belse\b|\$\()\s*gh\s+([^&|;}]*)')
 # only the heredoc half of the shared stripper: a quoted argument here is the text being posted
 REFUSED_API_PATHS = re.compile(r'/(merge|dispatches|approvals?)\b')
+# the undo of a POST the gate lets through after one warning, so it is judged the same way. Anchored
+# on one issue or pull request: `repos/o/r/labels/<name>` deletes the label from the repository.
+METADATA_DELETE_PATHS = re.compile(r'/issues/\d+/labels/[^/]+$|/pulls/\d+/requested_reviewers$')
 REFUSED_PR_ACTIONS = ('merge', 'close', 'reopen', 'lock', 'unlock', 'delete')
 REFUSED_ISSUE_ACTIONS = ('close', 'reopen', 'delete', 'transfer', 'lock', 'unlock', 'pin', 'unpin')
 BODY_PR_ACTIONS = ('create', 'edit', 'comment', 'review')
@@ -76,6 +81,11 @@ def tokens_of(text):
         return shlex.split(text)
     except ValueError:
         return text.split()
+
+
+def gh_words(toks):
+    """The words after `gh`: a segment keeps the `&&` or `;` in front of it, and so does a command."""
+    return toks[toks.index('gh') + 1:] if 'gh' in toks else toks
 
 
 def refused_field(key, value):
@@ -114,7 +124,11 @@ def classify_api(toks, segment):
         method = 'POST' if has_fields else 'GET'
     if method in ('GET', 'HEAD'):
         return 'ignore', ''
-    if method == 'DELETE' or REFUSED_API_PATHS.search(path) or refused:
+    if REFUSED_API_PATHS.search(path) or refused:
+        return 'refuse', 'gh api %s %s' % (method, path)
+    if method == 'DELETE' and METADATA_DELETE_PATHS.search(path):
+        return 'metadata', 'gh api %s %s' % (method, path)
+    if method == 'DELETE':
         return 'refuse', 'gh api %s %s' % (method, path)
     if method in ('POST', 'PUT', 'PATCH'):
         return 'body', 'gh api %s %s' % (method, path)
@@ -215,7 +229,7 @@ def resolve_bodies(command, cwd):
         for m in CAT_FILE.finditer(command):
             bodies.append(file_text(cwd, m.group(1)))
         toks = tokens_of(command)
-        is_api = 'api' in toks[:2]
+        is_api = gh_words(toks)[:1] == ['api']
         for i, t in enumerate(toks):
             value = None
             if is_api and t in FIELD_FLAGS and i + 1 < len(toks) and '=' in toks[i + 1]:
