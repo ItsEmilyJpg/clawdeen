@@ -58,12 +58,28 @@ body {
   margin: 0;
   background: var(--ground);
   color: var(--ink);
+  /*
+   * An application, not a page. A drag across a row selected half the board the way a web page
+   * does, and nothing here is prose to be swept over: what is genuinely text to take says so for
+   * itself, one rule at a time, the way `.pick` in the session sheet already did alone.
+   */
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
   font:
     13px/1.5 'Inter Variable',
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
+}
+
+/* A field is text by definition, and one that cannot be selected cannot be corrected either. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: auto;
 }
 
 /* The window has no title bar of its own, so the top strip is where it is dragged from. */

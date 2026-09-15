@@ -161,6 +161,9 @@ header {
   cursor: pointer;
 }
 
+/* The window selects nothing by default, being an application rather than a page. This is the one
+   place that is somebody's writing rather than chrome, and a transcript nobody can copy out of is
+   half a transcript. */
 .talk {
   flex: 1;
   overflow-y: auto;
@@ -168,6 +171,9 @@ header {
   display: grid;
   gap: 10px;
   align-content: start;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: auto;
 }
 
 .line {
