@@ -41,7 +41,7 @@ the newest release is, which sends nothing but the version already running.
 
 ## What it keeps
 
-Its own data lives in the application's `userData` directory and nothing else is written anywhere:
+Its own data lives in the application's `userData` directory, and one field outside it, named below:
 `order.json` for the order cards were dragged into, `window.json` for where the window was,
 `usage.json` for the last reading of the windows that came back, `settings.json` for the language,
 the repositories that are hidden and the order they were dragged into, and the sessions put on
@@ -49,6 +49,13 @@ hold, and
 `history.db`, a SQLite with one row per stretch of a state. The database is opened with Node's own
 `node:sqlite`, which is why this carries no native dependency; Node still calls it experimental and
 says so on every start.
+
+The one thing written outside that directory is the name of a session put on hold: the board puts
+`ON HOLD - ` in front of the `title` in the session's own record, in the language it is drawing in,
+and takes it off again when the session comes back. The record is written back whole, so nothing but
+that field moves. The Claude app keeps its titles in memory, so the mark does not reach a running
+sidebar: it holds on disk for a session the app is not writing, and shows in the list the next time
+the app is started.
 
 ## The words a row can say
 
@@ -67,7 +74,11 @@ A session waiting on an answer is sorted to the top, its dot turns amber, and th
 menu, for a session parked on somebody who is not you. A parked row says so instead of saying it
 waits on you, drops out of the tray count and into its own lane, and stays exactly where it was
 otherwise. It comes off the shelf from the same menu, and on its own the moment the session works
-again, because the mark was only ever about the silence.
+again, because the mark was only ever about the silence. Its name in the Claude app says so too,
+under [What it keeps](#what-it-keeps).
+
+Every lane folds away from its own heading, and stays folded until it is opened again. The count
+stays on the heading either way, so a lane that is shut still says how much is in it.
 While a set of checks is running the word carries how many are done and how long it has been going;
 once the run is over it says how long ago it finished.
 

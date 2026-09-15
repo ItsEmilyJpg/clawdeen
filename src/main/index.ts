@@ -35,6 +35,7 @@ import { transcripts } from './transcripts'
 import { hooksInstalled, installHooks, removeHooks } from './hooks'
 import { listen } from './live'
 import { keepOrder } from './order'
+import { renameHeld } from './naming'
 import { lastBounds, rememberBounds } from './window-state'
 import { check, install, REPO_URL, sweepReplaced } from './update'
 import { ago, burnVerdict, doubtsOf, inWords, stateLabel, usageRows } from '../shared/words'
@@ -578,6 +579,8 @@ void app.whenReady().then(() => {
     const kept = settings().held
     if (kept.includes(id) === on) return
     saveSettings({ held: on ? [...kept, id] : kept.filter((one) => one !== id) })
+    // And in the app the session itself lives in, so parking is visible where she reads the list.
+    await renameHeld(id, on)
     await refresh()
   })
   // The whole list as she arranged it, not the one name that moved: the page already knows where

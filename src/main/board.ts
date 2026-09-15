@@ -11,6 +11,7 @@ import { branches, openSession, records, type SessionRecord } from './records'
 import { record, standing, today } from './history'
 import { liveAt, liveState } from './live'
 import { order } from './order'
+import { renameHeld } from './naming'
 import {
   lastCall,
   lastTurn,
@@ -389,7 +390,12 @@ export async function board(): Promise<Board> {
   )
   const parked = settings().held
   const woken = release(sessions, parked)
-  if (woken.length > 0) saveSettings({ held: parked.filter((id) => !woken.includes(id)) })
+  if (woken.length > 0) {
+    saveSettings({ held: parked.filter((id) => !woken.includes(id)) })
+    // Its name in the Claude app still says parked, and a session that has started working again is
+    // not. Taking the mark off here is what keeps the two from disagreeing without her touching it.
+    await Promise.all(woken.map((id) => renameHeld(id, false)))
+  }
   // How long a card has stood where it stands, off the stretch the last pass left open, so a lane
   // can hold its order while the sessions in it work. A word that has only just changed has no
   // stretch under it yet, and a session doing nothing never gets one.
