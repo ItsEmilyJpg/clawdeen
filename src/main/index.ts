@@ -36,7 +36,7 @@ import { hooksInstalled, installHooks, removeHooks } from './hooks'
 import { listen } from './live'
 import { keepOrder } from './order'
 import { lastBounds, rememberBounds } from './window-state'
-import { check, install, sweepReplaced } from './update'
+import { check, install, REPO_URL, sweepReplaced } from './update'
 import { ago, burnVerdict, doubtsOf, inWords, stateLabel, usageRows } from '../shared/words'
 import trayIcon from '../../resources/trayTemplate.png?asset'
 import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
@@ -363,6 +363,16 @@ function announce(sessions: Session[]): void {
   announced = true
 }
 
+/**
+ * What the macOS About panel says under the version. One line: the panel is small and unstyled, and
+ * four lines of it read as a wall. What it used to carry is in the settings row instead, where the
+ * layout is ours. The name and the copyright come from the bundle's own `Info.plist`, and saying
+ * them twice here is how the two drift apart.
+ */
+function describeApp(): void {
+  app.setAboutPanelOptions({ credits: `${REPO_URL} · MIT` })
+}
+
 /** The window and the tray both draw it, and neither is worth losing the other over. */
 function sayUpdate(): void {
   if (window && !window.isDestroyed()) window.webContents.send('update', update)
@@ -530,9 +540,16 @@ void app.whenReady().then(() => {
   electronApp.setAppUserModelId('cz.itsemilyjpg.clawdeen')
   // Before anything draws: the tray, the menu and the first board all ask for words.
   setLocale(settings().locale)
+  describeApp()
   app.on('browser-window-created', (_event, created) => optimizer.watchWindowShortcuts(created))
 
   ipcMain.handle('board', async () => latest ?? (await board()))
+  ipcMain.handle('about', () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    repo: REPO_URL
+  }))
   ipcMain.handle('update', () => update)
   ipcMain.handle('installUpdate', async () => {
     await startInstall()

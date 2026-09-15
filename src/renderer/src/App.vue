@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 import { hiddenTally, movedProject, visible } from '../../shared/projects'
 import type {
+  About,
   Board,
   Locale,
   ProjectMark,
@@ -45,6 +46,8 @@ const board = ref<Board>({
 })
 /** A release newer than the one running, once the main process has asked. Null until then. */
 const update = ref<Update | null>(null)
+/** The version, what it runs on and where the source is. Asked once; none of it changes. */
+const about = ref<About | null>(null)
 /** Set while she is looking behind the filter, so a glance costs nothing and settles nothing. */
 const revealing = ref(false)
 const filter = ref<Filter>('')
@@ -449,6 +452,10 @@ function updateSays(): string {
   return say('updateOffered', found.latest)
 }
 
+function openRepo(): void {
+  if (about.value) void window.api.open(about.value.repo)
+}
+
 /** A failure has already said why in a box; the button then only opens the page it could not use. */
 function updateNow(): void {
   const found = update.value
@@ -478,6 +485,7 @@ onMounted(async () => {
   // window was there to hear it.
   update.value = await window.api.update()
   stopUpdate = window.api.onUpdate((next) => (update.value = next))
+  about.value = await window.api.about()
 })
 
 onUnmounted(() => {
@@ -642,11 +650,25 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="row last">
+            <div class="row">
               <span class="label">{{ say('groupOwnOrder') }}</span>
               <button class="plain" :disabled="board.order.length === 0" @click="forget()">
                 {{ board.order.length > 0 ? say('forget') : say('noOrder') }}
               </button>
+            </div>
+
+            <!-- Stacked, because the three readings below would otherwise squeeze the label into
+                 a column two characters wide, exactly as the repository list would. -->
+            <div v-if="about" class="row stacked last">
+              <span class="label">{{ say('groupAbout') }}</span>
+              <p class="what-it-is">{{ say('aboutWhat') }}</p>
+              <div class="about">
+                <span class="build">
+                  Clawdeen {{ about.version }} · Electron {{ about.electron }} · Chromium
+                  {{ about.chromium }}
+                </span>
+                <button class="plain" @click="openRepo()">{{ say('aboutRepo') }}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -917,6 +939,27 @@ h1 {
 
 .sessions.compact {
   gap: 5px;
+}
+
+.what-it-is {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 11.5px;
+}
+
+.about {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* It wraps rather than pushing the button off the menu: the Chromium version alone is fifteen
+   characters, and the menu is no wider than the window. */
+.build {
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .update {

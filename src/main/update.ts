@@ -17,6 +17,8 @@ const run = promisify(execFile)
 const REPO = 'ItsEmilyJpg/clawdeen'
 const LATEST = `https://api.github.com/repos/${REPO}/releases/latest`
 const RELEASES = `https://github.com/${REPO}/releases`
+/** Exported so the About panel and the settings row say the same address this asks. */
+export const REPO_URL = `https://github.com/${REPO}`
 /** Unauthenticated, so the answer has to be small and the wait has to end. */
 const ASK_TIMEOUT = 10_000
 const FETCH_TIMEOUT = 300_000

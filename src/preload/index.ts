@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-import type { Board, Line, Locale, ThemeMode, Update } from '../shared/types'
+import type { About, Board, Line, Locale, ThemeMode, Update } from '../shared/types'
 
 /** The renderer never reaches the disk: it asks for the board and is told when a new one exists. */
 const api = {
@@ -23,6 +23,8 @@ const api = {
   // A release newer than the one running, and the one button that replaces it. Its own channel
   // rather than a field on the board: the board is rebuilt every few seconds off the sessions, and
   // this is read once at start off GitHub.
+  // Fixed for the life of the run, so the page asks once and keeps what it is told.
+  about: (): Promise<About> => ipcRenderer.invoke('about'),
   update: (): Promise<Update | null> => ipcRenderer.invoke('update'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('installUpdate'),
   onUpdate: (listen: (update: Update | null) => void): (() => void) => {

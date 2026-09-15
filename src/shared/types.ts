@@ -234,3 +234,12 @@ export interface Update {
   /** What went wrong, said in the words the failing step gave rather than a summary of them. */
   error?: string
 }
+
+/** What the settings row says about the application itself. Fixed for the life of the run. */
+export interface About {
+  version: string
+  electron: string
+  chromium: string
+  /** Where the source is, taken from the same constant the update check asks. */
+  repo: string
+}
