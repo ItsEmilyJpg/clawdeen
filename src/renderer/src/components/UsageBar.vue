@@ -245,8 +245,7 @@ function doubted(window: UsageWindow): boolean {
 }
 
 .usage .credits {
-  grid-column: 1 / -1;
-  justify-self: start;
+  flex: 1 0 100%;
   margin: 0;
 }
 
@@ -259,7 +258,7 @@ function doubted(window: UsageWindow): boolean {
 }
 
 .usage .doubt {
-  grid-column: 1 / -1;
+  flex: 1 0 100%;
   margin: 0;
 }
 
@@ -278,14 +277,22 @@ function doubted(window: UsageWindow): boolean {
   color: var(--danger);
 }
 
+/*
+ * The windows fill the width the board below them has, however wide that is. A grid of
+ * `auto-fit, minmax(300px, 1fr)` counted columns off the window instead: at 1048px it made three
+ * and the two windows took two of them, and on a 4K screen it makes more still, so the wider the
+ * screen the smaller the share they sat in. Flex sizes them from how many there are.
+ */
 .usage {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   margin-bottom: 14px;
 }
 
 .gauge {
+  /* The 300px is the width below which they stop sharing a line, not a width they settle at. */
+  flex: 1 1 300px;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 12px;
