@@ -70,10 +70,11 @@ export const LANE_WORDS: (ActivityWord | null)[] = [
   'waiting-for-ci',
   'waiting-for-issue',
   'waiting-for-other',
-  // Under every wait, because a wait still ends on its own and this one ends when she says so. It
-  // keeps a lane rather than leaving the board: parked is not gone, which is the whole point of it.
-  'on-hold',
-  null
+  null,
+  // The bottom of the board, under the lane that takes the leftovers: a wait still ends on its own
+  // and this one ends when she says so, so it is the one thing on the board she is not waiting for.
+  // It keeps a lane rather than leaving: parked is not gone, which is the whole point of it.
+  'on-hold'
 ]
 
 export function laneRows(): { word: ActivityWord | null; title: string }[] {

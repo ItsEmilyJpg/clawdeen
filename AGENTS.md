@@ -76,7 +76,7 @@ app started from that path by another session breaks the moment the directory mo
 ## Before a commit
 
 ```bash
-npm run check     # typecheck, lint and the tests, and it stamps the tree it proved
+npm run check     # typecheck, lint, the tests and the gates, and it stamps the tree it proved
 ```
 
 The commit gate refuses a commit over a tree that stamp does not cover. Edit anything after it and

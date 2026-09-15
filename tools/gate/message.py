@@ -21,8 +21,56 @@ BREAK = (';', '&&', '||', '|', '&')
 GIT_VALUE = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path')
 MESSAGE_FLAGS = ('--message',)
 FILE_FLAGS = ('--file',)
-# What the shell would work out for itself, and the gate reads the command rather than running it.
-BLIND = ('$(', '${', '`')
+# What stands in the tokens where the shell would have worked something out for itself. A NUL can
+# reach neither a command nor a file, so nothing but `marked` ever puts one there.
+MARK = '\x00shell\x00'
+
+
+def expands(command: str, at: int) -> bool:
+    """Whether the character at this position starts something the shell works out for itself."""
+    if command[at] == '`':
+        return True
+    if command[at] != '$':
+        return False
+    after = command[at + 1 : at + 2]
+    return after in ('(', '{', '_') or after.isalnum()
+
+
+def marked(command: str) -> str:
+    """
+    The command with everything the shell would work out replaced by a mark, so `shlex` can take the
+    quotes off without taking that difference with them.
+
+    That difference is the whole reading. `shlex` strips the quoting, and afterwards a backtick that
+    was literal inside single quotes is indistinguishable from one the shell would have run, so the
+    gate refused an ordinary code span in a commit message and said the shell was to blame for text
+    the shell never touched. Tracking the quote here answers what searching the finished string
+    cannot.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    at = 0
+
+    while at < len(command):
+        char = command[at]
+        # A backslash outside single quotes hands the next character through untouched, expansion
+        # included, and inside them it is a character like any other.
+        if quote != "'" and char == '\\':
+            out.append(command[at : at + 2])
+            at += 2
+            continue
+        if quote is None and char in '"\'':
+            quote = char
+        elif char == quote:
+            quote = None
+        elif quote != "'" and expands(command, at):
+            out.append(MARK)
+            at += 1
+            continue
+        out.append(char)
+        at += 1
+
+    return ''.join(out)
 
 
 def commit_words(tokens: list[str]) -> list[str] | None:
@@ -63,8 +111,10 @@ def file_text(path: str) -> tuple[str | None, str | None]:
     """What a `--file` names, or why it cannot be had."""
     if path == '-':
         return None, 'the message arrives on stdin, where the gate never sees it'
-    if any(mark in path for mark in BLIND):
-        return None, f'the shell works out the path {path}, so the gate cannot follow it'
+    if MARK in path:
+        # The mark stands where the expansion was, and a NUL in a message helps nobody read it.
+        shown = path.replace(MARK, '…')
+        return None, f'the shell works out the path {shown}, so the gate cannot follow it'
     try:
         with open(path, encoding='utf8') as handle:
             return handle.read(), None
@@ -109,7 +159,7 @@ def message_of(words: list[str]) -> tuple[str, str | None]:
             texts.append(text or '')
 
     joined = '\n\n'.join(texts)
-    if any(mark in joined for mark in BLIND):
+    if MARK in joined:
         return '', 'the shell works out part of the message, so the gate cannot read it'
     return joined, None
 
@@ -118,9 +168,9 @@ def main() -> int:
     payload = json.load(sys.stdin)
     command = (payload.get('tool_input') or {}).get('command', '')
     try:
-        tokens = shlex.split(command)
+        tokens = shlex.split(marked(command))
     except ValueError:
-        tokens = command.split()
+        tokens = marked(command).split()
 
     words = commit_words(tokens)
     if words is None:
