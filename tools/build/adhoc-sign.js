@@ -8,7 +8,8 @@
 // it was told to move it to the bin.
 //
 // So it is signed again, ad-hoc: no developer account, no notarisation, and a bundle that verifies.
-// The first launch is still a right click and Open, which is what an unnotarised application gets.
+// A downloaded copy is still stopped once, because Gatekeeper asks for notarisation and not for a
+// signature; right click and Open no longer answers that on macOS 26, so README says what does.
 const { execFileSync } = require('node:child_process')
 const { join } = require('node:path')
 
