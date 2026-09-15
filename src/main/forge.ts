@@ -9,6 +9,13 @@ const run = promisify(execFile)
 const LOOKUP_TTL = 300
 /** A check turns red while the session runs, so it is read back sooner than the rest. */
 const CHECKS_TTL = 90
+/** The kind of a number that exists never changes. */
+const KIND_TTL = 30 * 86400
+/**
+ * A number that is not there yet is one the repository will reach, and a repository the token lost
+ * access to answers the same 404, so "no such number" is believed for an hour rather than a month.
+ */
+const MISSING_TTL = 3600
 const PR_FIELDS =
   'url,state,isDraft,headRefName,closingIssuesReferences,statusCheckRollup,mergeable,reviewDecision'
 const STATES: { [key: string]: StateWord } = {
@@ -37,6 +44,7 @@ const CHECKS_RUNNING = new Set([
 
 interface Cached {
   at: number
+  ttl: number
   value: unknown
 }
 
@@ -45,29 +53,43 @@ const memory = new Map<string, Cached>()
 /** A failed lookup keeps the last good answer instead of blanking the board. */
 async function cached<T>(
   key: string,
-  ttl: number,
+  ttl: number | ((value: T) => number),
   compute: () => Promise<T | undefined>
 ): Promise<T | undefined> {
   const stored = memory.get(key)
-  if (stored && Date.now() / 1000 - stored.at < ttl) return stored.value as T
+  if (stored && Date.now() / 1000 - stored.at < stored.ttl) return stored.value as T
   const value = await compute()
   if (value === undefined) return stored?.value as T | undefined
-  memory.set(key, { at: Date.now() / 1000, value })
+  memory.set(key, {
+    at: Date.now() / 1000,
+    ttl: typeof ttl === 'function' ? ttl(value) : ttl,
+    value
+  })
   return value
+}
+
+/**
+ * Whether gh failed because GitHub answered that the thing is not there. That is an answer about the
+ * thing; a missing gh, a timeout, a rate limit or a bad token says nothing about it.
+ */
+export function notFound(error: unknown): boolean {
+  const { stderr } = (error ?? {}) as { stderr?: unknown }
+  return typeof stderr === 'string' && /\(HTTP 404\)/.test(stderr)
 }
 
 async function json<T>(
   command: string,
   args: string[],
-  env?: NodeJS.ProcessEnv
+  options: { env?: NodeJS.ProcessEnv; missing?: T } = {}
 ): Promise<T | undefined> {
   try {
     const { stdout } = await run(command, args, {
       timeout: 15_000,
-      env: { ...process.env, ...env }
+      env: { ...process.env, ...options.env }
     })
     return JSON.parse(stdout) as T
   } catch (error) {
+    if ('missing' in options && notFound(error)) return options.missing
     console.warn(
       `${command} ${args.slice(0, 3).join(' ')}: ${(error as Error).message.split('\n')[0]}`
     )
@@ -202,9 +224,16 @@ interface PullRequest {
 
 /** Whether a number is an issue or a pull request, which GitHub only tells by asking. */
 export async function isPullRequest(repo: string, number: number): Promise<boolean> {
-  // The kind of a number never changes, so this is asked once a month rather than once a sweep.
-  const found = await cached<boolean>(`kind:${repo}:${number}`, 30 * 86400, () =>
-    json('gh', ['api', `repos/${repo}/issues/${number}`, '--jq', '.pull_request != null'])
+  // A 404 is kept as null, so a number that is not in the repository is not asked again every sweep.
+  const found = await cached<boolean | null>(
+    `kind:${repo}:${number}`,
+    (kind) => (kind === null ? MISSING_TTL : KIND_TTL),
+    () =>
+      json<boolean | null>(
+        'gh',
+        ['api', `repos/${repo}/issues/${number}`, '--jq', '.pull_request != null'],
+        { missing: null }
+      )
   )
   return found === true
 }
@@ -319,9 +348,7 @@ export async function gitlabMr(
         json(
           'glab',
           ['mr', 'list', '-R', project, '--source-branch', branch, '--all', '-F', 'json'],
-          {
-            GITLAB_HOST: host
-          }
+          { env: { GITLAB_HOST: host } }
         )
     )
     const mr = found?.[0]
