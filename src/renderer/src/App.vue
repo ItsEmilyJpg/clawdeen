@@ -2,7 +2,15 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 import { hiddenTally, movedProject, visible } from '../../shared/projects'
-import type { Board, Locale, ProjectMark, Session, StateWord, ThemeMode } from '../../shared/types'
+import type {
+  Board,
+  Locale,
+  ProjectMark,
+  Session,
+  StateWord,
+  ThemeMode,
+  Update
+} from '../../shared/types'
 import ChatPane from './components/ChatPane.vue'
 import SessionCard from './components/SessionCard.vue'
 import SessionDetail from './components/SessionDetail.vue'
@@ -35,6 +43,8 @@ const board = ref<Board>({
   projectOrder: [],
   hidden: []
 })
+/** A release newer than the one running, once the main process has asked. Null until then. */
+const update = ref<Update | null>(null)
 /** Set while she is looking behind the filter, so a glance costs nothing and settles nothing. */
 const revealing = ref(false)
 const filter = ref<Filter>('')
@@ -144,6 +154,7 @@ const nudge = ref(0)
 /** What the menu keeps between itself and the edge of the window. */
 const EDGE = 8
 let stop: (() => void) | null = null
+let stopUpdate: (() => void) | null = null
 
 function remembered(key: string): string | null {
   try {
@@ -426,6 +437,26 @@ function onKey(event: KeyboardEvent): void {
   if (!reading.value && !opened.value && search.value) search.value = ''
 }
 
+/**
+ * A function rather than a computed: `say` reads a language held outside Vue, so a computed over it
+ * has nothing to invalidate on and would keep saying it in the language before the last switch.
+ */
+function updateSays(): string {
+  const found = update.value
+  if (!found) return ''
+  if (found.stage === 'installing') return say('updateInstalling', found.latest)
+  if (found.stage === 'failed') return say('updateFailed', found.latest)
+  return say('updateOffered', found.latest)
+}
+
+/** A failure has already said why in a box; the button then only opens the page it could not use. */
+function updateNow(): void {
+  const found = update.value
+  if (!found) return
+  if (found.stage === 'failed') void window.api.open(found.page)
+  else void window.api.installUpdate()
+}
+
 onMounted(async () => {
   window.addEventListener('keydown', onKey)
   window.addEventListener('click', outside)
@@ -443,6 +474,10 @@ onMounted(async () => {
     // A board that has just arrived is green this instant, not at the next tick of the clock.
     now.value = Date.now() / 1000
   })
+  // Asked as well as listened for: the check runs at start and may already have answered before the
+  // window was there to hear it.
+  update.value = await window.api.update()
+  stopUpdate = window.api.onUpdate((next) => (update.value = next))
 })
 
 onUnmounted(() => {
@@ -450,6 +485,7 @@ onUnmounted(() => {
   window.removeEventListener('click', outside)
   if (clockTick) clearInterval(clockTick)
   stop?.()
+  stopUpdate?.()
 })
 </script>
 
@@ -461,6 +497,16 @@ onUnmounted(() => {
       <!-- One group, so a window too narrow for the bar wraps the whole of it rather than
            stranding the cog on a row of its own. -->
       <div class="tools">
+        <!-- Only ever drawn when there is one: an application with nothing to update says nothing. -->
+        <button
+          v-if="update"
+          :class="['update', update.stage]"
+          :title="update.stage === 'failed' ? update.error : say('updateInstall')"
+          :disabled="update.stage === 'installing'"
+          @click="updateNow()"
+        >
+          {{ updateSays() }}
+        </button>
         <!-- The dot of a card, on the one number that says when all the others were read: green
              while the board is still being swept, red once it has stopped. -->
         <button class="stamp" :title="stampTitle" @click="tick(!ticking)">
@@ -871,6 +917,28 @@ h1 {
 
 .sessions.compact {
   gap: 5px;
+}
+
+.update {
+  border: 0;
+  border-radius: 9999px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.update.installing {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.update.failed {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .wider {
