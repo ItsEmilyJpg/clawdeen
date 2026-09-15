@@ -25,9 +25,10 @@ and opens any of them in the Claude app with one click.
 
 ## What it reads
 
-Everything is read locally and nothing about a session leaves the machine. Three calls go out at
-all: the ones `gh` and `glab` make for pull requests, and one to `api.anthropic.com` for the usage
-windows, which sends a token and asks for two percentages.
+Everything is read locally and nothing about a session leaves the machine. Four calls go out at all:
+the ones `gh` and `glab` make for pull requests, one to `api.anthropic.com` for the usage windows,
+which sends a token and asks for two percentages, and one to `api.github.com` at start to ask what
+the newest release is, which sends nothing but the version already running.
 
 | Source                                                                             | For                                                                                                                                                                                                                                 |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -178,6 +179,24 @@ mv ~/Downloads/Clawdeen.app /Applications/ && xattr -dr com.apple.quarantine /Ap
 
 Either is per copy, so the next download asks again. A build made from this checkout never carries
 the flag at all and opens on a double click, because nothing downloaded it.
+
+## Keeping it up to date
+
+At start it asks GitHub for the newest release. When there is one, the bar and the tray menu say so,
+and one click fetches it, checks it and restarts into it. Asked once per run rather than on a timer:
+the board sits in the tray for days and a release is not urgent.
+
+`electron-updater`, which is what an Electron application would normally use, cannot do this here.
+Squirrel checks a new bundle against the running one's designated requirement, and an ad-hoc
+signature makes that requirement the `cdhash` of one exact build, so no later build can ever satisfy
+it. Until there is a Developer ID, the same job is done by hand in `src/main/update.ts`: fetch the
+archive for this architecture, unpack it with `ditto`, verify the signature and the bundle
+identifier, swap it into place and relaunch. A download that does not verify is never installed, and
+the bundle it replaced is renamed beside it and removed at the next start, because a running bundle
+cannot delete itself.
+
+It replaces the `.app` it is running out of, so that bundle has to be writable. Where it is not, the
+update says so and offers the release page instead.
 
 ## What it does not know
 

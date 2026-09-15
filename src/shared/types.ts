@@ -214,3 +214,32 @@ export interface Board {
    */
   hidden: string[]
 }
+
+/**
+ * A newer release than the one running, and where the attempt to put it in place has got to.
+ *
+ * Deliberately not part of `Board`: the board is rebuilt from the sessions every few seconds and
+ * this is not read off them. It travels on its own channel so a stale board cannot blank it.
+ */
+export interface Update {
+  /** The version this process is, from the bundle rather than from the source tree. */
+  current: string
+  /** The newest release on GitHub. Only ever set when it is genuinely newer than `current`. */
+  latest: string
+  /** The bundle to fetch, picked for this architecture and not guessed from the version. */
+  url: string
+  /** Where the release page is, which is the way out when the swap itself will not work. */
+  page: string
+  stage: 'offered' | 'installing' | 'failed'
+  /** What went wrong, said in the words the failing step gave rather than a summary of them. */
+  error?: string
+}
+
+/** What the settings row says about the application itself. Fixed for the life of the run. */
+export interface About {
+  version: string
+  electron: string
+  chromium: string
+  /** Where the source is, taken from the same constant the update check asks. */
+  repo: string
+}

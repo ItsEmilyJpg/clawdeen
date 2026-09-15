@@ -16,7 +16,15 @@ import { watch } from 'node:fs'
 import { join } from 'node:path'
 
 import { say, setLocale, stateWord } from '../shared/i18n'
-import type { Board, Locale, Session, StateWord, ThemeMode, UsageWindow } from '../shared/types'
+import type {
+  Board,
+  Locale,
+  Session,
+  StateWord,
+  ThemeMode,
+  Update,
+  UsageWindow
+} from '../shared/types'
 import { board } from './board'
 import { saveSettings, settings } from './settings'
 import { withProject } from '../shared/projects'
@@ -28,6 +36,7 @@ import { hooksInstalled, installHooks, removeHooks } from './hooks'
 import { listen } from './live'
 import { keepOrder } from './order'
 import { lastBounds, rememberBounds } from './window-state'
+import { check, install, REPO_URL, sweepReplaced } from './update'
 import { ago, burnVerdict, doubtsOf, inWords, stateLabel, usageRows } from '../shared/words'
 import trayIcon from '../../resources/trayTemplate.png?asset'
 import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
@@ -113,6 +122,8 @@ const SWEEP = 15_000
 let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let latest: Board | null = null
+/** A newer release than this one, once the check at start has found one. Null the rest of the time. */
+let update: Update | null = null
 let waiting = new Set<string>()
 let announced = false
 let settling: NodeJS.Timeout | null = null
@@ -229,6 +240,33 @@ function trayRows(session: Session): MenuItemConstructorOptions[] {
   return rows
 }
 
+/**
+ * The update, when there is one, at the top of the menu rather than the bottom: fifteen sessions
+ * already push everything below them out of sight.
+ */
+function updateRows(): MenuItemConstructorOptions[] {
+  if (!update) return []
+  const said: Record<Update['stage'], string> = {
+    offered: say('updateOffered', update.latest),
+    installing: say('updateInstalling', update.latest),
+    failed: say('updateFailed', update.latest)
+  }
+  return [
+    {
+      label: said[update.stage],
+      icon: dot(update.stage === 'failed' ? 'red' : 'blue'),
+      toolTip: update.stage === 'failed' ? update.error : say('updateInstall'),
+      // Nothing to click while it runs; a failure opens the page it could not put in place itself.
+      enabled: update.stage !== 'installing',
+      click: (): void => {
+        if (update?.stage === 'failed') openUrl(update.page)
+        else void startInstall()
+      }
+    },
+    { type: 'separator' }
+  ]
+}
+
 function trayMenu(current: Board | null): Menu {
   const sessions = current?.sessions ?? []
   const rows = sessions
@@ -246,6 +284,7 @@ function trayMenu(current: Board | null): Menu {
     enabled: false
   }))
   return Menu.buildFromTemplate([
+    ...updateRows(),
     ...(rows.length > 0 ? rows : [{ label: say('noSessions'), enabled: false }]),
     ...meters,
     ...(spent.length > 0
@@ -322,6 +361,66 @@ function announce(sessions: Session[]): void {
   }
   waiting = now
   announced = true
+}
+
+/**
+ * What the macOS About panel says under the version. One line: the panel is small and unstyled, and
+ * four lines of it read as a wall. What it used to carry is in the settings row instead, where the
+ * layout is ours. The name and the copyright come from the bundle's own `Info.plist`, and saying
+ * them twice here is how the two drift apart.
+ */
+function describeApp(): void {
+  app.setAboutPanelOptions({ credits: `${REPO_URL} · MIT` })
+}
+
+/** The window and the tray both draw it, and neither is worth losing the other over. */
+function sayUpdate(): void {
+  if (window && !window.isDestroyed()) window.webContents.send('update', update)
+  try {
+    tray?.setContextMenu(trayMenu(latest))
+  } catch (error) {
+    console.error(`tray: ${(error as Error).stack}`)
+  }
+}
+
+/**
+ * Asked once, at start. The board sits in the tray for days at a time, so a second ask would have
+ * to be a timer; one at start is what was wanted, and a release is not urgent enough for more.
+ */
+async function askAboutUpdate(): Promise<void> {
+  await sweepReplaced()
+  const found = await check()
+  if (!found) return
+  update = found
+  sayUpdate()
+}
+
+/**
+ * The swap itself. It ends by relaunching, so the only thing that returns here is a failure, and a
+ * failure says what the failing step said rather than a word of its own: the release page stays one
+ * click away for when it cannot be fixed from inside the application.
+ */
+async function startInstall(): Promise<void> {
+  if (!update || update.stage === 'installing') return
+  update = { ...update, stage: 'installing', error: undefined }
+  sayUpdate()
+  try {
+    await install(update.url)
+  } catch (error) {
+    const said = (error as Error).message
+    console.error(`update install: ${said}`)
+    update = { ...update, stage: 'failed', error: said }
+    sayUpdate()
+    const { response } = await dialog.showMessageBox({
+      type: 'error',
+      message: say('updateFailed', update.latest),
+      detail: said,
+      buttons: [say('updateOpenPage'), say('updateDismiss')],
+      defaultId: 0,
+      cancelId: 1
+    })
+    if (response === 0) openUrl(update.page)
+  }
 }
 
 async function refresh(): Promise<void> {
@@ -441,9 +540,20 @@ void app.whenReady().then(() => {
   electronApp.setAppUserModelId('cz.itsemilyjpg.clawdeen')
   // Before anything draws: the tray, the menu and the first board all ask for words.
   setLocale(settings().locale)
+  describeApp()
   app.on('browser-window-created', (_event, created) => optimizer.watchWindowShortcuts(created))
 
   ipcMain.handle('board', async () => latest ?? (await board()))
+  ipcMain.handle('about', () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    repo: REPO_URL
+  }))
+  ipcMain.handle('update', () => update)
+  ipcMain.handle('installUpdate', async () => {
+    await startInstall()
+  })
   ipcMain.handle('open', (_event, url: string) => openUrl(url))
   ipcMain.handle('chat', async (_event, cli: string) => {
     const path = (await transcripts()).get(cli)
@@ -504,6 +614,7 @@ void app.whenReady().then(() => {
   createWindow()
   void refresh()
   watchSources()
+  void askAboutUpdate().catch((error) => console.warn(`update: ${(error as Error).message}`))
   void listen(settle).catch((error) => console.warn(`live: ${(error as Error).message}`))
 
   app.on('activate', () => show())

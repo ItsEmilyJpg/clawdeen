@@ -1,5 +1,8 @@
 appId: cz.itsemilyjpg.clawdeen
 productName: Clawdeen
+# Said here rather than left to the default, which builds it out of `author` in package.json and so
+# changes wherever that does. This is what the About panel shows.
+copyright: Copyright © 2026 ItsEmilyJpg
 directories:
   buildResources: build
 files:

@@ -283,6 +283,15 @@ interface Phrases {
   hiddenCount: string
   hiddenWaiting: string
   showingAll: string
+  updateOffered: string
+  updateInstall: string
+  updateInstalling: string
+  updateFailed: string
+  updateOpenPage: string
+  updateDismiss: string
+  groupAbout: string
+  aboutRepo: string
+  aboutWhat: string
 }
 
 const PHRASES: Record<Locale, Phrases> = {
@@ -434,7 +443,16 @@ const PHRASES: Record<Locale, Phrases> = {
     columnMeta: 'where and when',
     hiddenCount: '{n} hidden',
     hiddenWaiting: '{n} waiting',
-    showingAll: 'showing all'
+    showingAll: 'showing all',
+    updateOffered: 'Version {n} is out',
+    updateInstall: 'Fetches the release, checks it and restarts into it',
+    updateInstalling: 'Updating to {n}…',
+    updateFailed: 'Update to {n} failed',
+    updateOpenPage: 'Open the release page',
+    updateDismiss: 'Not now',
+    groupAbout: 'About',
+    aboutRepo: 'Repository',
+    aboutWhat: 'A board of the Claude Code sessions running on this Mac.'
   },
   cs: {
     justNow: 'právě teď',
@@ -584,7 +602,16 @@ const PHRASES: Record<Locale, Phrases> = {
     columnMeta: 'kde a kdy',
     hiddenCount: 'skrytých {n}',
     hiddenWaiting: '{n} čeká',
-    showingAll: 'zobrazeno vše'
+    showingAll: 'zobrazeno vše',
+    updateOffered: 'Je verze {n}',
+    updateInstall: 'Stáhne release, ověří ho a restartuje se do něj',
+    updateInstalling: 'Aktualizuje se na {n}…',
+    updateFailed: 'Aktualizace na {n} selhala',
+    updateOpenPage: 'Otevřít stránku releasu',
+    updateDismiss: 'Teď ne',
+    groupAbout: 'O aplikaci',
+    aboutRepo: 'Repozitář',
+    aboutWhat: 'Přehled Claude Code sessions běžících na tomhle Macu.'
   }
 }
 
