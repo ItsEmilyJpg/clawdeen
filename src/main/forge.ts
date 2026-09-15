@@ -3,8 +3,13 @@ import { promisify } from 'node:util'
 
 import type { Change, Job, Progress, StateWord } from '../shared/types'
 import { branches, type SessionRecord } from './records'
+import { trace } from './trace'
 
-const run = promisify(execFile)
+const spawnRun = promisify(execFile)
+const run = ((command: string, args: string[], options: object) => {
+  trace(`spawn ${command} ${args.join(' ').slice(0, 120)}`)
+  return spawnRun(command, args, options)
+}) as unknown as typeof spawnRun
 
 const LOOKUP_TTL = 300
 /** A check turns red while the session runs, so it is read back sooner than the rest. */

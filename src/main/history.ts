@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 import { asStateWord } from '../shared/i18n'
 import type { Session, Spell } from '../shared/types'
+import { trace } from './trace'
 
 /**
  * One row per stretch of a state rather than a sample per tick, so a day of the board is a few
@@ -54,6 +55,9 @@ export function record(sessions: Session[], now: number): void {
     const held = standing.get(session.id)
     const word = session.activity
     if (held?.word === word) continue
+    trace(
+      `record ${session.id.slice(-8)} ${held?.word ?? '∅'} -> ${word ?? '∅'} now=${Math.round(now)}`
+    )
     if (held) close.run(Math.round(now), held.id)
     if (word) start.run(session.id, session.headline, word, Math.round(now))
   }

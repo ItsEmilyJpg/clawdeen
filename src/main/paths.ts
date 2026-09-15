@@ -34,7 +34,8 @@ export const JIRA_MAP = join(CONFIG, 'jira.json')
 /** Where a long local check registers itself; absent, the gate states simply never appear. */
 export const GATES = join(CONFIG, 'gates.json')
 /** Where the board tells the hooks to reach it: the port it listens on and the token to use. */
-export const LIVE = join(CONFIG, 'live.json')
+// A second board run for measuring would otherwise take the hooks away from the one in daily use.
+export const LIVE = process.env['CLAWDEEN_LIVE'] ?? join(CONFIG, 'live.json')
 /** The hook the application installs into the Claude settings, beside the rest of this. */
 export const HOOK = join(CONFIG, 'board-event.sh')
 /** Which account the CLI is logged into, which is whose the usage numbers are. */

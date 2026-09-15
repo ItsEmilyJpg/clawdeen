@@ -8,6 +8,7 @@ import { say, type PhraseKey } from '../shared/i18n'
 import type { Spend, UsageWindow } from '../shared/types'
 import { burnOf } from '../shared/words'
 import { CLI_CONFIG } from './paths'
+import { trace } from './trace'
 
 /** The last reading that came back, kept beside the application's own data. */
 function file(): string {
@@ -157,6 +158,7 @@ async function live(now: number): Promise<Stored> {
   if ('error' in key) return { error: key.error }
   let payload: Record<string, unknown>
   try {
+    trace('fetch usage endpoint')
     const response = await fetch(ENDPOINT, {
       headers: {
         Authorization: `Bearer ${key.value}`,
