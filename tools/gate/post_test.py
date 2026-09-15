@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """What the post gate makes of a gh command, case by case.
 
-Two readings are held here, each with a canary that plants the fault it guards against: which
-DELETE is metadata and which is the developer's own click (#60), and whether the text of a `gh api`
-call is found when something stands in front of `gh` (#61). The first half is also run through the
+Three readings are held here, each with a canary that plants the fault it guards against: which
+DELETE is metadata and which is the developer's own click (#60), whether the text of a `gh api`
+call is found when something stands in front of `gh` (#61), and whether a button press still counts
+as the developer's input when reminders arrive in front of it in the same row. The first half is also run through the
 hook itself, because "warns once, passes on the repeat" is a property of the process, not of one
 function.
 
@@ -126,6 +127,56 @@ def bodies() -> list[str]:
     return wrong
 
 
+REMINDER = '<system-reminder>\nThe developer started a spawned background task.\n</system-reminder>'
+PRESS = '<create-pr-command>\nCreate a pull request for the current branch.\n</create-pr-command>'
+
+INPUTS: list[tuple[str, str, bool]] = [
+    # (what it is, the string a user row carries, whether the developer is behind it)
+    ('a Create PR press on its own counts', PRESS, True),
+    ('a reminder in front of the press, as the second press arrived on 2026-09-15, counts', f'{REMINDER}\n{PRESS}', True),
+    ('two reminders in front of the press count', f'{REMINDER}\n{REMINDER}{PRESS}', True),
+    ('a typed message counts', 'Ano, vytvoř ten pull request.', True),
+    ('a typed message behind a reminder counts, as 28 rows in these transcripts arrived', f'{REMINDER}\nmerged', True),
+    ('a reminder alone does not count', REMINDER, False),
+    ('reminders alone do not count', f'{REMINDER}\n\n{REMINDER}\n', False),
+    ('a task notification does not count', '<task-notification>done</task-notification>', False),
+    ('a reminder in front of a task notification does not count', f'{REMINDER}<task-notification>done</task-notification>', False),
+    ('a tag nobody has named blocks behind a reminder too', f'{REMINDER}<merge-pr-command>x</merge-pr-command>', False),
+    ('a reminder that never closes does not count', f'<system-reminder>cut off {PRESS}', False),
+]
+
+
+def inputs() -> list[str]:
+    """Which user rows the gate takes for the developer, and what a refusal would call the last one."""
+    wrong = []
+    for what, text, want in INPUTS:
+        got = gate.is_human_input({'type': 'user', 'message': {'role': 'user', 'content': text}}, set())
+        if got != want:
+            wrong.append(f'  {what}\n    wanted {want}, got {got}')
+
+    # the incident itself, replayed: a body shown between two presses, the second behind a reminder
+    rows = [
+        {'type': 'user', 'message': {'role': 'user', 'content': PRESS}},
+        {'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'Title and body shown between the presses.'}]}},
+        {'type': 'user', 'message': {'role': 'user', 'content': f'{REMINDER}\n{PRESS}'}},
+        {'type': 'user', 'message': {'role': 'user', 'content': REMINDER}},
+    ]
+    with tempfile.TemporaryDirectory() as room:
+        transcript = Path(room) / 'transcript.jsonl'
+        transcript.write_text(''.join(json.dumps(row) + '\n' for row in rows), encoding='utf8')
+        evidence = gate.read_evidence(str(transcript))
+    if evidence.last_input != 2:
+        wrong.append(f'  the second press is the last input, the reminder after it is not\n    wanted row 2, got {evidence.last_input}')
+    if evidence.last_input_kind != 'a <create-pr-command> they pressed':
+        wrong.append(f'  a press behind a reminder is reported as the press\n    got {evidence.last_input_kind!r}')
+    if not gate.was_shown('Title and body shown between the presses.', evidence):
+        wrong.append('  a body shown between the two presses counts as seen')
+    kind = gate.input_kind({'message': {'content': [{'type': 'text', 'text': REMINDER}, {'type': 'text', 'text': PRESS}]}})
+    if kind != 'a <create-pr-command> they pressed':
+        wrong.append(f'  a press in a list after a reminder part is reported as the press\n    got {kind!r}')
+    return wrong
+
+
 def run_hook(command: str, session: str, room: str) -> subprocess.CompletedProcess[str]:
     payload = {'tool_name': 'Bash', 'tool_input': {'command': command}, 'session_id': session, 'cwd': room}
     return subprocess.run(
@@ -179,18 +230,39 @@ def canaries() -> list[str]:
             wrong.append('  the bodies are found with the separator read as the first word, so they prove nothing')
     finally:
         gate.gh_words = kept_words
+
+    # the bug as it was: the leading tag read with nothing set aside, so a reminder hides the press
+    kept_reminder = gate.LEADING_REMINDER
+    gate.LEADING_REMINDER = re.compile(r'(?!)')
+    try:
+        if not any('a reminder in front of the press' in line for line in inputs()):
+            wrong.append('  a press behind a reminder counts with no reminder set aside, so that case proves nothing')
+    finally:
+        gate.LEADING_REMINDER = kept_reminder
+
+    # the tempting fix instead of this one: nothing set aside, the reminder itself named as a press.
+    # It lets the press through as well, so only the reminder alone can tell the two apart.
+    kept_rows = gate.DEVELOPER_ROW
+    gate.LEADING_REMINDER = re.compile(r'(?!)')
+    gate.DEVELOPER_ROW = kept_rows + ('system-reminder',)
+    try:
+        if not any('a reminder alone does not count' in line for line in inputs()):
+            wrong.append('  a reminder alone is refused even with the reminder named as a press, so that case proves nothing')
+    finally:
+        gate.LEADING_REMINDER = kept_reminder
+        gate.DEVELOPER_ROW = kept_rows
     return wrong
 
 
 def main() -> int:
-    wrong = verdicts() + bodies() + through_the_hook() + canaries()
+    wrong = verdicts() + bodies() + inputs() + through_the_hook() + canaries()
     if wrong:
         print('post: refused or read the wrong thing:', file=sys.stderr)
         print('\n'.join(wrong), file=sys.stderr)
         return 1
 
     with tempfile.TemporaryDirectory() as room:
-        count = len(VERDICTS) + len(body_cases(Path(room)))
+        count = len(VERDICTS) + len(body_cases(Path(room))) + len(INPUTS)
     print(f'post: clean, {count} cases, the hook run twice and the canaries that prove they bite')
     return 0
 
