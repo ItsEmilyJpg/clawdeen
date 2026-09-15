@@ -73,6 +73,10 @@ HARNESS_ROW = re.compile(r'^<([a-z][a-z0-9-]*)>')
 # a button in the app writes that same shape and pressing it is the developer's own input. Named
 # one by one, so a tag nobody has seen yet goes on blocking rather than starting to approve.
 DEVELOPER_ROW = ('create-pr-command',)
+# the app can deliver a press with reminders queued in front of it, all in one string: the second
+# Create PR press on 2026-09-15 arrived that way and was read as harness. Only a closed reminder is
+# skipped, so a row with nothing after its reminders still has nobody behind it.
+LEADING_REMINDER = re.compile(r'<system-reminder>.*?</system-reminder>\s*', re.S)
 MIN_EVIDENCE = 20
 
 
@@ -271,8 +275,18 @@ def rows_of(path):
         return
 
 
-def typed_by_a_person(text):
+def past_reminders(text):
+    """The row as it reads once the reminders queued in front of it are set aside."""
     text = (text or '').strip()
+    while True:
+        reminder = LEADING_REMINDER.match(text)
+        if reminder is None:
+            return text
+        text = text[reminder.end():]
+
+
+def typed_by_a_person(text):
+    text = past_reminders(text)
     if not text:
         return False
     row = HARNESS_ROW.match(text)
@@ -306,14 +320,20 @@ def shown_lines(text):
 def input_kind(row):
     """How the developer spoke, so a refusal can say which turn it measured against."""
     content = (row.get('message') or {}).get('content')
-    if isinstance(content, list):
+    if isinstance(content, str):
+        texts = [content]
+    elif isinstance(content, list):
         if any(isinstance(c, dict) and c.get('type') == 'tool_result' for c in content):
             return 'an %s answer' % ASK_TOOL
-        for c in content:
-            if isinstance(c, dict) and c.get('type') == 'text':
-                tag = HARNESS_ROW.match((c.get('text') or '').strip())
-                if tag:
-                    return 'a <%s> they pressed' % tag.group(1)
+        texts = [c.get('text') for c in content if isinstance(c, dict) and c.get('type') == 'text']
+    else:
+        texts = []
+    # the text that made the row count, read past its reminders the way is_human_input read it, or
+    # a press would be reported as the reminder in front of it
+    for text in texts:
+        if typed_by_a_person(text):
+            tag = HARNESS_ROW.match(past_reminders(text))
+            return 'a <%s> they pressed' % tag.group(1) if tag else 'a typed message'
     return 'a typed message'
 
 
