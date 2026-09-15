@@ -24,6 +24,7 @@ import {
   type Doing
 } from './transcripts'
 import { usage } from './usage'
+import { trace } from './trace'
 
 const ACTIVE_SECONDS = 180
 const WAITING_SECONDS = 1800
@@ -395,13 +396,16 @@ export async function board(): Promise<Board> {
     records(now),
     order()
   ])
+  trace(`board read records=${found.length} order=${kept.length}`)
   const open = openSession(found)
   const sessions = await Promise.all(
     found.map((record) => describe(record, now, index, config, trackers, open))
   )
+  trace('board described')
   const parked = settings().held
   const woken = release(sessions, parked)
   if (woken.length > 0) {
+    trace(`board woken ${woken.join(',')}`)
     saveSettings({ held: parked.filter((id) => !woken.includes(id)) })
     // Its name in the Claude app still says parked, and a session that has started working again is
     // not. Taking the mark off here is what keeps the two from disagreeing without her touching it.

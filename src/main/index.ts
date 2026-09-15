@@ -41,6 +41,7 @@ import { check, install, REPO_URL, sweepReplaced } from './update'
 import { ago, burnVerdict, doubtsOf, inWords, stateLabel, usageRows } from '../shared/words'
 import trayIcon from '../../resources/trayTemplate.png?asset'
 import { SESSIONS, TASKS, TRANSCRIPTS } from './paths'
+import { run, trace } from './trace'
 
 /** The app focuses this session; "last" is the only other value it accepts. */
 const APP_SESSION = 'claude://code/continue?session='
@@ -293,7 +294,7 @@ function trayMenu(current: Board | null): Menu {
       : []),
     { type: 'separator' },
     { label: say('openBoard'), click: show },
-    { label: 'Obnovit', click: () => void refresh() },
+    { label: 'Obnovit', click: () => void refresh('tray') },
     {
       label: say('reportState'),
       type: 'checkbox',
@@ -340,7 +341,7 @@ async function wire(on: boolean): Promise<void> {
     await removeHooks()
     wired = false
   }
-  await refresh()
+  await refresh('wire')
 }
 
 /** Only the turn into waiting is news; a session that has been waiting all along must not ring again. */
@@ -424,12 +425,28 @@ async function startInstall(): Promise<void> {
   }
 }
 
-async function refresh(): Promise<void> {
+let traceSeq = 0
+let traceFlight = 0
+let traceDelivered = 0
+async function refresh(cause = 'unknown'): Promise<void> {
+  const id = ++traceSeq
+  traceFlight++
+  trace(`refresh#${id} start cause=${cause} inflight=${traceFlight}`)
+  const t0 = Date.now()
   try {
-    latest = applyClaim(await board())
+    const built = await run.run(id, () => board())
+    // A run that started before the one already delivered is about to overwrite a newer board.
+    trace(
+      `refresh#${id} end ms=${Date.now() - t0} inflight=${traceFlight - 1}` +
+        (id < traceDelivered ? ` STALE-OVER #${traceDelivered}` : '')
+    )
+    traceDelivered = Math.max(traceDelivered, id)
+    latest = applyClaim(built)
   } catch (error) {
     console.error(`board: ${(error as Error).stack}`)
     return
+  } finally {
+    traceFlight--
   }
   // The window is told first and separately: a tray that cannot draw itself must not stop the board.
   if (window && !window.isDestroyed()) window.webContents.send('board', latest)
@@ -446,7 +463,7 @@ function settle(): void {
   if (settling) clearTimeout(settling)
   settling = setTimeout(() => {
     settling = null
-    void refresh()
+    void refresh('settle')
   }, SETTLE)
 }
 
@@ -534,7 +551,7 @@ function watchSources(): void {
       console.warn(`watch ${root}: ${(error as Error).message}`)
     }
   }
-  setInterval(() => void refresh(), SWEEP)
+  setInterval(() => void refresh('sweep'), SWEEP)
 }
 
 void app.whenReady().then(() => {
@@ -544,7 +561,10 @@ void app.whenReady().then(() => {
   describeApp()
   app.on('browser-window-created', (_event, created) => optimizer.watchWindowShortcuts(created))
 
-  ipcMain.handle('board', async () => latest ?? (await board()))
+  ipcMain.handle('board', async () => {
+    trace(`ipc board latest=${Boolean(latest)}`)
+    return latest ?? (await run.run(-1, () => board()))
+  })
   ipcMain.handle('about', () => ({
     version: app.getVersion(),
     electron: process.versions.electron,
@@ -562,7 +582,7 @@ void app.whenReady().then(() => {
   })
   ipcMain.handle('order', async (_event, ids: string[]) => {
     await keepOrder(ids)
-    await refresh()
+    await refresh('ipc-order')
   })
   // The language outlives the run, so it is written down rather than asked of the system again, and
   // the tray is rebuilt because its menu is already drawn in the language before this one.
@@ -571,7 +591,7 @@ void app.whenReady().then(() => {
   // every session, so a hidden repository is out of sight and never out of earshot.
   ipcMain.handle('hide', async (_event, project: string, shown: boolean) => {
     saveSettings({ hidden: withProject(settings().hidden, project, shown) })
-    await refresh()
+    await refresh('ipc-hide')
   })
   // Parked, or taken off the shelf again. One id at a time, unlike the repositories: this is one
   // row's menu answering for that row, and nothing else on the page knows the list.
@@ -581,18 +601,18 @@ void app.whenReady().then(() => {
     saveSettings({ held: on ? [...kept, id] : kept.filter((one) => one !== id) })
     // And in the app the session itself lives in, so parking is visible where she reads the list.
     await renameHeld(id, on)
-    await refresh()
+    await refresh('ipc-hold')
   })
   // The whole list as she arranged it, not the one name that moved: the page already knows where
   // every repository sits, and a list written whole cannot drift from what it draws.
   ipcMain.handle('projects', async (_event, names: string[]) => {
     saveSettings({ projectOrder: names })
-    await refresh()
+    await refresh('ipc-projects')
   })
   ipcMain.handle('locale', async (_event, next: Locale) => {
     saveSettings({ locale: next })
     setLocale(next)
-    await refresh()
+    await refresh('ipc-locale')
   })
   // The window frame is not the page: the traffic lights and the colour behind an unpainted window
   // come from the native theme, and the page's own choice has to reach it or the two disagree.
@@ -615,7 +635,7 @@ void app.whenReady().then(() => {
     .catch(() => undefined)
 
   createWindow()
-  void refresh()
+  void refresh('startup')
   watchSources()
   void askAboutUpdate().catch((error) => console.warn(`update: ${(error as Error).message}`))
   void listen(settle).catch((error) => console.warn(`live: ${(error as Error).message}`))
