@@ -17,8 +17,11 @@ export interface SessionRecord {
   branch?: string
   writtenBranches?: string[]
   prs?: { prNumber?: number; repo?: string; url?: string; state?: string; branch?: string }[]
+  createdAt?: number
   lastActivityAt?: number
   lastFocusedAt?: number
+  model?: string
+  effort?: string
   isArchived?: boolean
   isStarred?: boolean
 }

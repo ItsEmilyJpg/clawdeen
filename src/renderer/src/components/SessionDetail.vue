@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-import type { Change, Session } from '../../../shared/types'
-import { ago, clock, inWords, prClass, say, stateWord, STATE_CLASS } from '../words'
+import type { Change, Session, Tokens } from '../../../shared/types'
+import {
+  ago,
+  clock,
+  day,
+  inWords,
+  prClass,
+  say,
+  stateWord,
+  STATE_CLASS,
+  tokenCount
+} from '../words'
 
 const props = defineProps<{ session: Session; left: number; top: number }>()
 const emit = defineEmits<{ close: []; chat: [] }>()
@@ -85,6 +95,36 @@ const going = computed(() => lasting(props.session.since))
 
 /** How long it has stood in the state it is in, which is what holds a lane still and nothing says. */
 const standingSince = computed(() => lasting(props.session.entered))
+
+/** When the app opened the session, as a time and a day, since a session can outlive the day. */
+const openedAt = computed(() => {
+  const opened = props.session.opened
+  return opened === null ? null : `${clock(opened)} · ${day(opened)}`
+})
+
+/** How long it has been going since then, which the last movement says nothing about. */
+const alive = computed(() => {
+  const opened = props.session.opened
+  return opened === null ? null : inWords(Date.now() / 1000 - opened)
+})
+
+/** The four ways a token is paid for, in the order a turn spends them. */
+const TOKEN_ROWS = [
+  ['fieldSent', 'input'],
+  ['fieldCacheWrite', 'cacheWrite'],
+  ['fieldCacheRead', 'cacheRead'],
+  ['fieldOutput', 'output']
+] as const
+
+/** The exact count, for the tooltip, where the row itself rounds. */
+function exact(count: number): string {
+  return count.toLocaleString(say('clock'))
+}
+
+/** The agents' side on one line: it is a footnote to the session's own spend, not a second table. */
+function onOneLine(tokens: Tokens): string {
+  return TOKEN_ROWS.map(([label, key]) => `${say(label)} ${tokenCount(tokens[key])}`).join(' · ')
+}
 
 /** Open, a draft, merged or closed: the pull request's own state, said rather than only coloured. */
 function standing(change: Change): string {
@@ -234,6 +274,15 @@ onUnmounted(() => {
             <dd>
               {{ session.last ? `${ago(session.last)} · ${clock(session.last)}` : say('unknown') }}
             </dd>
+
+            <!-- A record without `createdAt` says so rather than borrowing the last movement. -->
+            <dt>{{ say('fieldOpened') }}</dt>
+            <dd :class="{ none: !openedAt }">{{ openedAt ?? say('unknown') }}</dd>
+
+            <template v-if="alive">
+              <dt>{{ say('fieldAlive') }}</dt>
+              <dd>{{ alive }}</dd>
+            </template>
           </dl>
         </section>
 
@@ -323,6 +372,43 @@ onUnmounted(() => {
               </template>
             </dl>
           </article>
+        </section>
+
+        <section class="block">
+          <h3>{{ say('blockRun') }}</h3>
+          <dl>
+            <!-- An unreadable transcript is not zero tokens, so every row says it is not known. -->
+            <template v-for="[label, key] in TOKEN_ROWS" :key="key">
+              <dt>{{ say(label) }}</dt>
+              <dd v-if="session.burned" class="count" :title="exact(session.burned.own[key])">
+                {{ tokenCount(session.burned.own[key]) }}
+              </dd>
+              <dd v-else class="none">{{ say('unknown') }}</dd>
+            </template>
+
+            <template v-if="session.burned?.agents">
+              <dt>{{ say('fieldAgents') }}</dt>
+              <dd>{{ onOneLine(session.burned.agents) }}</dd>
+            </template>
+
+            <dt>{{ say('fieldModel') }}</dt>
+            <dd :class="['mono', { none: !session.model }]">
+              {{ session.model ?? say('unknown') }}
+            </dd>
+
+            <dt>{{ say('fieldEffort') }}</dt>
+            <dd :class="{ none: !session.effort }">{{ session.effort ?? say('unknown') }}</dd>
+
+            <template v-if="session.copy">
+              <dt>{{ say('fieldCopy') }}</dt>
+              <dd class="mono pick">{{ session.copy }}</dd>
+            </template>
+
+            <template v-if="session.branch">
+              <dt>{{ say('fieldBranch') }}</dt>
+              <dd class="mono pick">{{ session.branch }}</dd>
+            </template>
+          </dl>
         </section>
 
         <section class="block">
@@ -525,6 +611,11 @@ dd {
 .mono {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
+}
+
+/* Figures of equal width, so the four counts line up by their units. */
+.count {
+  font-variant-numeric: tabular-nums;
 }
 
 /* An id is only worth showing if it can be taken, and the sheet is otherwise unselectable chrome. */

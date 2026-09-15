@@ -7,11 +7,13 @@ export {
   ago,
   burnVerdict,
   clock,
+  day,
   doubtsOf,
   inWords,
   refreshVerdict,
   repoColour,
-  stateLabel
+  stateLabel,
+  tokenCount
 } from '../../shared/words'
 
 /** The colour of a pull request is its own state: open, merged, closed or still a draft. */

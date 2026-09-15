@@ -1,4 +1,4 @@
-import { say, stateWord } from './i18n'
+import { decimal, say, stateWord } from './i18n'
 import type { Change, StateWord, UsageWindow } from './types'
 
 export function ago(moment: number): string {
@@ -26,6 +26,26 @@ export function clock(moment: number, seconds = false): string {
     minute: '2-digit',
     ...(seconds ? { second: '2-digit' } : {})
   })
+}
+
+/** The day a moment fell on, with the year only where it is not this one. */
+export function day(moment: number): string {
+  const date = new Date(moment * 1000)
+  return date.toLocaleDateString(say('clock'), {
+    day: 'numeric',
+    month: 'numeric',
+    ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' })
+  })
+}
+
+/**
+ * A token count short enough to read at a glance. A session reads millions back off the cache and
+ * sends a few dozen fresh, so the unit moves with the number rather than one unit fitting both.
+ */
+export function tokenCount(count: number): string {
+  if (count < 1000) return String(count)
+  if (count < 1_000_000) return `${decimal(count / 1000, count < 10_000 ? 1 : 0)} k`
+  return `${decimal(count / 1_000_000, count < 10_000_000 ? 2 : 1)} M`
 }
 
 /**

@@ -13,6 +13,7 @@ import { liveAt, liveState } from './live'
 import { order } from './order'
 import { renameHeld } from './naming'
 import {
+  burned,
   lastCall,
   lastTurn,
   modified,
@@ -348,6 +349,16 @@ async function describe(
     title,
     headline: headline(title, [issue, change], state),
     place: [named, record.worktreeName ?? record.branch].filter(Boolean).join(' · '),
+    // Not filled from `lastActivityAt` where it is missing: the last thing a session did is not when
+    // it was opened, and a row saying so would be wrong by exactly how long the session has run.
+    opened: record.createdAt ? record.createdAt / 1000 : null,
+    model: record.model ?? null,
+    effort: record.effort ?? null,
+    burned: path ? await burned(path) : null,
+    // `from` is where the app opened it, which for a worktree session is the main checkout; the copy it
+    // actually sits in is the worktree, unless its own commands took it somewhere else altogether.
+    copy: (root === from ? (record.worktreePath ?? record.cwd ?? from) : root) || null,
+    branch: record.worktreeName ? (record.branch ?? null) : null,
     project: named,
     last,
     active: now - last < ACTIVE_SECONDS,
