@@ -30,8 +30,10 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             "dist/mac-arm64/Clawdeen.app" "dist/Clawdeen-${version}-arm64.zip"
 
-      # The build is unsigned and not notarised, because notarising asks for a developer account
-      # this project does not have. Said here so nobody downloads it and wonders why it will not open.
+      # The notes live in a file of their own rather than inline. They tell whoever downloaded the
+      # build how to open it, so they have to be edited when that answer changes, and an answer
+      # buried in a shell string inside a workflow is one nobody reads: the inline copy went on
+      # recommending right click and Open for a whole release after the README had stopped.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,5 +41,5 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           gh release create "$GITHUB_REF_NAME" \
             --title "Clawdeen ${version}" \
-            --notes "An Apple silicon build, unsigned and not notarised. macOS refuses it on a double click: open it once with a right click and **Open**, and it starts normally after that. The README says what it reads and what it keeps." \
+            --notes-file .github/release-notes.md \
             "dist/Clawdeen-${version}-arm64.zip"
