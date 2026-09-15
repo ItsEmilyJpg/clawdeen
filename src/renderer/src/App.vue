@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { hiddenTally, movedProject, visible } from '../../shared/projects'
 import type {
   About,
+  ActivityWord,
   Board,
   Locale,
   ProjectMark,
@@ -188,10 +189,32 @@ const LANED = new Set(LANE_WORDS.filter(Boolean))
  * whose state has no lane alike, because a word that belongs nowhere took the row off the board
  * entirely.
  */
+/**
+ * The lanes she has folded away, by the state they are named after rather than by their title: a
+ * title is a word in whatever language the window speaks, and the fold has to survive changing it.
+ * The lane with no word of its own is kept under `other`, which is no state and cannot collide.
+ */
+function laneKey(word: ActivityWord | null): string {
+  return word ?? 'other'
+}
+
+const folded = ref<string[]>(
+  LANE_WORDS.map(laneKey).filter((key) => remembered(`lane-${key}`) === '0')
+)
+
+function fold(word: ActivityWord | null): void {
+  const key = laneKey(word)
+  const shut = !folded.value.includes(key)
+  folded.value = shut ? [...folded.value, key] : folded.value.filter((one) => one !== key)
+  keep(`lane-${key}`, !shut)
+}
+
 const lanes = computed(() =>
   laneRows()
     .map((lane) => ({
       ...lane,
+      key: laneKey(lane.word),
+      shut: folded.value.includes(laneKey(lane.word)),
       sessions: shown.value
         .filter((session) =>
           lane.word ? session.activity === lane.word : !LANED.has(session.activity)
@@ -736,11 +759,23 @@ onUnmounted(() => {
     </nav>
 
     <template v-if="workflow">
-      <section v-for="lane in lanes" :key="lane.title" class="lane">
-        <h2 :class="lane.word ? STATE_CLASS[lane.word] : ''">
+      <section v-for="lane in lanes" :key="lane.key" class="lane">
+        <!-- The heading is the switch: the count stays on it folded, so a shut lane still says how
+             much is in it rather than hiding the number with the cards. -->
+        <h2
+          :class="[lane.word ? STATE_CLASS[lane.word] : '', { shut: lane.shut }]"
+          role="button"
+          tabindex="0"
+          :aria-expanded="!lane.shut"
+          :title="say(lane.shut ? 'laneExpand' : 'laneCollapse')"
+          @click="fold(lane.word)"
+          @keydown.enter.prevent="fold(lane.word)"
+          @keydown.space.prevent="fold(lane.word)"
+        >
+          <i class="fold" aria-hidden="true">{{ lane.shut ? '▸' : '▾' }}</i>
           {{ lane.title }} <b>{{ lane.sessions.length }}</b>
         </h2>
-        <ul :class="['sessions', 'compact', columnClass]">
+        <ul v-if="!lane.shut" :class="['sessions', 'compact', columnClass]">
           <SessionCard
             v-for="session in lane.sessions"
             :key="session.id"
@@ -1159,6 +1194,24 @@ h1 {
 
 .lane + .lane {
   margin-top: 16px;
+}
+
+/* The heading is what folds the lane, so it says so under the pointer and answers the keyboard. */
+.lane h2[role='button'] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.lane h2 .fold {
+  font-style: normal;
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+/* A folded lane keeps its own line and stops there: nothing under it, so the next one comes up. */
+.lane h2.shut {
+  margin-bottom: 0;
 }
 
 .lane h2.s-waiting {

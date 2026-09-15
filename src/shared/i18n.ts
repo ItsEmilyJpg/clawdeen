@@ -274,6 +274,10 @@ interface Phrases {
   actionChat: string
   actionHold: string
   actionUnhold: string
+  /** What the name of a parked session starts with, so the Claude app says it is parked too. */
+  heldMark: string
+  laneCollapse: string
+  laneExpand: string
   cardHold: string
   groupColumns: string
   columnTags: string
@@ -435,6 +439,9 @@ const PHRASES: Record<Locale, Phrases> = {
     actionChat: 'Chat',
     actionHold: 'Put on hold',
     actionUnhold: 'Take off hold',
+    heldMark: 'ON HOLD',
+    laneCollapse: 'Fold this lane away',
+    laneExpand: 'Open this lane again',
     cardHold: 'Park it: the row stops saying it waits on you',
     groupColumns: 'Columns',
     columnTags: 'issue and PR',
@@ -594,6 +601,9 @@ const PHRASES: Record<Locale, Phrases> = {
     actionChat: 'Chat',
     actionHold: 'Odložit',
     actionUnhold: 'Vrátit z odložených',
+    heldMark: 'ODLOŽENO',
+    laneCollapse: 'Sbalit tuhle kategorii',
+    laneExpand: 'Zase ji rozbalit',
     cardHold: 'Odložit: řádek přestane tvrdit, že čeká na tebe',
     groupColumns: 'Sloupce',
     columnTags: 'issue a PR',
@@ -619,6 +629,17 @@ const PHRASES: Record<Locale, Phrases> = {
 export function say(key: keyof Phrases, value?: string | number): string {
   const phrase = PHRASES[chosen][key]
   return value === undefined ? phrase : phrase.replace('{n}', String(value))
+}
+
+/**
+ * One phrase in every language the board speaks.
+ *
+ * What a parked session's name starts with is written in the language of the window, and the same
+ * name has to be recognised again after the language has changed under it. So the mark is stripped
+ * against every language rather than against the one in force.
+ */
+export function everySaying(key: keyof Phrases): string[] {
+  return LOCALES.map((one) => PHRASES[one][key])
 }
 
 /** A decimal, pointed the way the language points it. */
