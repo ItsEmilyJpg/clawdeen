@@ -94,12 +94,42 @@ export interface Change extends Link {
   issues: number[]
 }
 
+/**
+ * Tokens as the API counted them, split the way they are paid for: what was sent fresh, what was
+ * written into the cache, what was read back off it, and what came out.
+ */
+export interface Tokens {
+  input: number
+  cacheWrite: number
+  cacheRead: number
+  output: number
+}
+
+/** What a session has burned, read off its transcripts rather than off the account. */
+export interface Burn {
+  /** The session's own turns. */
+  own: Tokens
+  /** The agents it started, which keep transcripts of their own; null where it started none. */
+  agents: Tokens | null
+}
+
 export interface Session {
   id: string
   cli: string
   title: string
   headline: string
   place: string
+  /** When the Claude app opened the session. Null where the record does not say. */
+  opened: number | null
+  /** The model and the effort the app runs it as, copied off the record. */
+  model: string | null
+  effort: string | null
+  /** Null where the transcript could not be read: zero tokens would be a claim. */
+  burned: Burn | null
+  /** The working copy the session works in, which the row names only by its repository. */
+  copy: string | null
+  /** The branch, only where `place` names the worktree instead and the row therefore does not say it. */
+  branch: string | null
   /** The repository the session works in, which is what a project filter hides or shows. */
   project: string
   last: number

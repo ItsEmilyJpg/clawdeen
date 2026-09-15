@@ -209,6 +209,17 @@ interface Phrases {
   fieldFailed: string
   fieldSession: string
   fieldCli: string
+  fieldOpened: string
+  fieldAlive: string
+  blockRun: string
+  fieldModel: string
+  fieldEffort: string
+  fieldCopy: string
+  fieldSent: string
+  fieldCacheWrite: string
+  fieldCacheRead: string
+  fieldOutput: string
+  fieldAgents: string
   cannotMerge: string
   cardDetail: string
   secondsTitle: string
@@ -373,6 +384,17 @@ const PHRASES: Record<Locale, Phrases> = {
     fieldFailed: 'failed',
     fieldSession: 'session',
     fieldCli: 'cli',
+    fieldOpened: 'opened',
+    fieldAlive: 'alive for',
+    blockRun: 'Run',
+    fieldModel: 'model',
+    fieldEffort: 'effort',
+    fieldCopy: 'working copy',
+    fieldSent: 'sent',
+    fieldCacheWrite: 'cache written',
+    fieldCacheRead: 'cache read',
+    fieldOutput: 'output',
+    fieldAgents: 'agents',
     cannotMerge: 'cannot be merged',
     cardDetail: 'Everything known about the session',
     secondsTitle: 'Seconds',
@@ -535,6 +557,17 @@ const PHRASES: Record<Locale, Phrases> = {
     fieldFailed: 'spadlo',
     fieldSession: 'session',
     fieldCli: 'cli',
+    fieldOpened: 'otevřena',
+    fieldAlive: 'běží',
+    blockRun: 'Běh',
+    fieldModel: 'model',
+    fieldEffort: 'effort',
+    fieldCopy: 'kopie',
+    fieldSent: 'posláno',
+    fieldCacheWrite: 'do cache',
+    fieldCacheRead: 'z cache',
+    fieldOutput: 'výstup',
+    fieldAgents: 'agenti',
     cannotMerge: 'nejde zmergovat',
     cardDetail: 'Vše, co se o session ví',
     secondsTitle: 'Vteřiny',

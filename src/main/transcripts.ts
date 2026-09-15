@@ -1,9 +1,9 @@
 import { open, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { glob } from 'node:fs/promises'
 
-import type { Call } from '../shared/types'
+import type { Burn, Call, Tokens } from '../shared/types'
 import { aboutOf } from './chat'
 import { TASKS, TRANSCRIPTS } from './paths'
 
@@ -73,8 +73,15 @@ interface Entry {
   type?: string
   isSidechain?: boolean
   message?: {
+    id?: string
     stop_reason?: string
     content?: string | Part[]
+    usage?: {
+      input_tokens?: number
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+      output_tokens?: number
+    }
   }
 }
 
@@ -517,4 +524,122 @@ export async function touchedPaths(path: string, from: string): Promise<string[]
     }
   }
   return [...seen.paths].reverse()
+}
+
+/** What has been summed of one transcript, and which responses are already in the sum. */
+interface Spent {
+  offset: number
+  rest: string
+  counted: Set<string>
+  own: Tokens
+  agents: Tokens
+  /** Whether any of the turns summed ran on the agents' side, so an empty side says none rather than zero. */
+  agentsSeen: boolean
+}
+
+const spent = new Map<string, Spent>()
+
+const nothing = (): Tokens => ({ input: 0, cacheWrite: 0, cacheRead: 0, output: 0 })
+
+function add(to: Tokens, more: Tokens): void {
+  to.input += more.input
+  to.cacheWrite += more.cacheWrite
+  to.cacheRead += more.cacheRead
+  to.output += more.output
+}
+
+/**
+ * Adds what the new bytes of one transcript cost, or null where the file cannot be read.
+ *
+ * One response is written as one line per block it holds, text and every tool call apart, and each of
+ * those lines carries the whole response's usage. Of 47,668 such lines across 150 transcripts only
+ * 23,641 were distinct responses, and every repeat was identical, so a plain sum says twice what was
+ * spent. A response is counted once, by its id.
+ */
+async function spentIn(path: string): Promise<Spent | null> {
+  let size: number
+  try {
+    size = (await stat(path)).size
+  } catch {
+    return null
+  }
+  let tally = spent.get(path)
+  // A transcript that shrank is a different file under the same name; what was summed no longer holds.
+  if (!tally || tally.offset > size) {
+    tally = {
+      offset: 0,
+      rest: '',
+      counted: new Set(),
+      own: nothing(),
+      agents: nothing(),
+      agentsSeen: false
+    }
+    spent.set(path, tally)
+  }
+  if (size <= tally.offset) return tally
+  let text: string
+  try {
+    const handle = await open(path, 'r')
+    try {
+      const buffer = Buffer.alloc(size - tally.offset)
+      await handle.read(buffer, 0, buffer.length, tally.offset)
+      text = tally.rest + buffer.toString('utf8')
+    } finally {
+      await handle.close()
+    }
+  } catch {
+    return null
+  }
+  const stop = text.lastIndexOf('\n')
+  tally.rest = stop === -1 ? text : text.slice(stop + 1)
+  tally.offset = size
+  for (const line of (stop === -1 ? '' : text.slice(0, stop)).split('\n')) {
+    if (!line.includes('"usage"')) continue
+    let entry: Entry
+    try {
+      entry = JSON.parse(line) as Entry
+    } catch {
+      continue
+    }
+    const message = entry.message
+    if (entry.type !== 'assistant' || !message?.usage) continue
+    // A response without an id cannot be told from its own repeats, so it is not guessed at.
+    if (!message.id || tally.counted.has(message.id)) continue
+    tally.counted.add(message.id)
+    const usage = message.usage
+    const tokens: Tokens = {
+      input: usage.input_tokens ?? 0,
+      cacheWrite: usage.cache_creation_input_tokens ?? 0,
+      cacheRead: usage.cache_read_input_tokens ?? 0,
+      output: usage.output_tokens ?? 0
+    }
+    // An agent's turns written into the session's own file are still the agent's.
+    if (entry.isSidechain) {
+      add(tally.agents, tokens)
+      tally.agentsSeen = true
+    } else add(tally.own, tokens)
+  }
+  return tally
+}
+
+/**
+ * What a session has burned: its own turns, and apart from them the agents it started, whose
+ * transcripts sit beside its own under `<cli>/subagents/`. Null where the session's own transcript
+ * cannot be read; an agent file that cannot be read is left out of the agents' sum.
+ */
+export async function burned(path: string): Promise<Burn | null> {
+  const own = await spentIn(path)
+  if (!own) return null
+  const agents = nothing()
+  let seen = own.agentsSeen
+  add(agents, own.agents)
+  const cli = basename(path).replace(/\.jsonl$/, '')
+  for await (const file of glob(join(dirname(path), cli, 'subagents', '*.jsonl'))) {
+    const agent = await spentIn(file)
+    if (!agent) continue
+    seen = true
+    add(agents, agent.own)
+    add(agents, agent.agents)
+  }
+  return { own: { ...own.own }, agents: seen ? agents : null }
 }

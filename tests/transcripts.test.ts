@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync, appendFileSy
 import { homedir, tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 
-import { lastCall, lastTurn, pendingWork, touchedPaths, watchedFor } from '../src/main/transcripts'
+import {
+  burned,
+  lastCall,
+  lastTurn,
+  pendingWork,
+  touchedPaths,
+  watchedFor
+} from '../src/main/transcripts'
 
 const rubbish: string[] = []
 
@@ -411,5 +418,79 @@ describe('touchedPaths reads the directories a session names', () => {
     expect(await touchedPaths(path, '/opened')).toEqual(['/first'])
     appendFileSync(path, JSON.stringify(ran('git -C /second status')) + '\n')
     expect(await touchedPaths(path, '/opened')).toEqual(['/second', '/first'])
+  })
+})
+
+describe('burned sums what a session spent', () => {
+  /** One block of a response, carrying the whole response's usage the way the transcript writes it. */
+  const block = (id: string, tokens: number[], extra: object = {}): unknown => ({
+    type: 'assistant',
+    ...extra,
+    message: {
+      id,
+      role: 'assistant',
+      content: [{ type: 'text', text: 'something' }],
+      usage: {
+        input_tokens: tokens[0],
+        cache_creation_input_tokens: tokens[1],
+        cache_read_input_tokens: tokens[2],
+        output_tokens: tokens[3]
+      }
+    }
+  })
+
+  it('counts a response once however many blocks repeat its usage', async () => {
+    const path = transcript([
+      block('msg_1', [3, 100, 1000, 10]),
+      block('msg_1', [3, 100, 1000, 10]),
+      block('msg_1', [3, 100, 1000, 10]),
+      said('user', 'next'),
+      block('msg_2', [1, 20, 2000, 5])
+    ])
+    expect(await burned(path)).toEqual({
+      own: { input: 4, cacheWrite: 120, cacheRead: 3000, output: 15 },
+      agents: null
+    })
+  })
+
+  it('reads what was appended and does not count a repeat that lands in the next pass', async () => {
+    const path = transcript([block('msg_1', [1, 1, 1, 1])])
+    await burned(path)
+    appendFileSync(
+      path,
+      [block('msg_1', [1, 1, 1, 1]), block('msg_2', [2, 2, 2, 2])]
+        .map((line) => JSON.stringify(line))
+        .join('\n') + '\n'
+    )
+    expect((await burned(path))?.own).toEqual({ input: 3, cacheWrite: 3, cacheRead: 3, output: 3 })
+  })
+
+  it('keeps the agents apart, from their own files and from sidechain turns alike', async () => {
+    const path = transcript([
+      block('msg_1', [1, 0, 0, 1]),
+      block('msg_side', [0, 0, 5, 0], { isSidechain: true })
+    ])
+    const agents = join(path.replace(/\.jsonl$/, ''), 'subagents')
+    mkdirSync(agents, { recursive: true })
+    writeFileSync(
+      join(agents, 'agent-one.jsonl'),
+      JSON.stringify(block('msg_agent', [7, 70, 700, 7], { isSidechain: true })) + '\n'
+    )
+    expect(await burned(path)).toEqual({
+      own: { input: 1, cacheWrite: 0, cacheRead: 0, output: 1 },
+      agents: { input: 7, cacheWrite: 70, cacheRead: 705, output: 7 }
+    })
+  })
+
+  it('says nothing about a transcript it cannot read, rather than zero', async () => {
+    expect(await burned(join(tmpdir(), 'board-no-such-transcript.jsonl'))).toBeNull()
+  })
+
+  it('says zero for a transcript that was read and holds no response yet', async () => {
+    const path = transcript([said('user', 'hello')])
+    expect(await burned(path)).toEqual({
+      own: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 },
+      agents: null
+    })
   })
 })
