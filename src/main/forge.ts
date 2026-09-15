@@ -49,6 +49,11 @@ interface Cached {
 }
 
 const memory = new Map<string, Cached>()
+/**
+ * A sweep describes every session at once, so sessions of one repository all find a key missing in
+ * the same moment. The question still being asked is kept too, and they wait on the one process.
+ */
+const pending = new Map<string, Promise<unknown>>()
 
 /** A failed lookup keeps the last good answer instead of blanking the board. */
 async function cached<T>(
@@ -58,14 +63,23 @@ async function cached<T>(
 ): Promise<T | undefined> {
   const stored = memory.get(key)
   if (stored && Date.now() / 1000 - stored.at < stored.ttl) return stored.value as T
-  const value = await compute()
-  if (value === undefined) return stored?.value as T | undefined
-  memory.set(key, {
-    at: Date.now() / 1000,
-    ttl: typeof ttl === 'function' ? ttl(value) : ttl,
-    value
-  })
-  return value
+  const asking = pending.get(key)
+  if (asking) return asking as Promise<T | undefined>
+  const asked = (async (): Promise<T | undefined> => {
+    const value = await compute()
+    if (value === undefined) return stored?.value as T | undefined
+    memory.set(key, {
+      at: Date.now() / 1000,
+      ttl: typeof ttl === 'function' ? ttl(value) : ttl,
+      value
+    })
+    return value
+  })()
+  pending.set(key, asked)
+  // Forgotten once it settles either way, so a failure is asked again on the next sweep.
+  const forget = (): void => void pending.delete(key)
+  void asked.then(forget, forget)
+  return asked
 }
 
 /**
@@ -97,47 +111,43 @@ async function json<T>(
   }
 }
 
-const remotes = new Map<string, { host: string | null; project: string | null }>()
-
 /** A working copy does not change its origin while the application runs, so it is asked once. */
 export async function remote(
   root: string
 ): Promise<{ host: string | null; project: string | null }> {
-  const known = remotes.get(root)
-  if (known) return known
-  try {
-    const { stdout } = await run('git', ['-C', root, 'remote', 'get-url', 'origin'], {
-      timeout: 15_000
-    })
-    const match = /(?:@|:\/\/)([^/:@]+)[:/](.+?)(?:\.git)?$/.exec(stdout.trim())
-    if (match) {
-      const found = { host: match[1], project: match[2] }
-      remotes.set(root, found)
-      return found
+  const found = await cached<{ host: string; project: string }>(
+    `remote:${root}`,
+    Infinity,
+    async () => {
+      try {
+        const { stdout } = await run('git', ['-C', root, 'remote', 'get-url', 'origin'], {
+          timeout: 15_000
+        })
+        const match = /(?:@|:\/\/)([^/:@]+)[:/](.+?)(?:\.git)?$/.exec(stdout.trim())
+        return match ? { host: match[1], project: match[2] } : undefined
+      } catch {
+        // A directory that is gone, or one that is not a working copy at all: neither is worth a line.
+        return undefined
+      }
     }
-  } catch {
-    // A directory that is gone, or one that is not a working copy at all: neither is worth a line.
-  }
-  return { host: null, project: null }
+  )
+  return found ?? { host: null, project: null }
 }
-
-const copies = new Map<string, string | null>()
 
 /** Whether a directory a session named is a working copy, and which one: a worktree answers itself. */
 export async function workingCopy(path: string): Promise<string | null> {
-  const known = copies.get(path)
-  if (known !== undefined) return known
-  let top: string | null = null
-  try {
-    const { stdout } = await run('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
-      timeout: 15_000
-    })
-    top = stdout.trim() || null
-  } catch {
-    // A directory that is gone, or one that is not a working copy: neither is worth asking twice.
-  }
-  copies.set(path, top)
-  return top
+  const found = await cached<string | null>(`copy:${path}`, Infinity, async () => {
+    try {
+      const { stdout } = await run('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
+        timeout: 15_000
+      })
+      return stdout.trim() || null
+    } catch {
+      // A directory that is gone, or one that is not a working copy: neither is worth asking twice.
+      return null
+    }
+  })
+  return found ?? null
 }
 
 /** What is checked out where the session works, which is what its pull request is named after. */

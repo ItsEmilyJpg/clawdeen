@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { isPullRequest, notFound } from '../src/main/forge'
+import { isPullRequest, notFound, remote, workingCopy } from '../src/main/forge'
 
 const gh = vi.hoisted(() => ({
   calls: 0,
@@ -97,5 +97,88 @@ describe('isPullRequest', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+/** A sweep starts every session's lookups in the same tick, which is what seven calls here stand for. */
+function together<T>(ask: () => Promise<T>): Promise<T[]> {
+  return Promise.all(Array.from({ length: 7 }, ask))
+}
+
+describe('a lookup still being asked', () => {
+  let key = 0
+
+  beforeEach(() => {
+    gh.calls = 0
+    key += 1
+  })
+
+  it('is asked once by sessions of one repository at the same time', async () => {
+    gh.answer = () => Promise.resolve({ stdout: 'true', stderr: '' })
+    expect(await together(() => isPullRequest(`owner/together-${key}`, 99999))).toEqual(
+      Array(7).fill(true)
+    )
+    expect(gh.calls).toBe(1)
+  })
+
+  it('is asked once again when the answer it holds has expired', async () => {
+    vi.useFakeTimers()
+    try {
+      gh.answer = () => Promise.reject(NOT_FOUND)
+      await isPullRequest(`owner/expired-${key}`, 70)
+      vi.advanceTimersByTime(3601 * 1000)
+      gh.answer = () => Promise.resolve({ stdout: 'true', stderr: '' })
+      expect(await together(() => isPullRequest(`owner/expired-${key}`, 70))).toEqual(
+        Array(7).fill(true)
+      )
+      expect(gh.calls).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('is forgotten once it fails, so the next sweep asks again', async () => {
+    gh.answer = () => Promise.reject(RATE_LIMIT)
+    await together(() => isPullRequest(`owner/failed-${key}`, 916))
+    expect(gh.calls).toBe(1)
+    await isPullRequest(`owner/failed-${key}`, 916)
+    expect(gh.calls).toBe(2)
+  })
+
+  it('hands every waiting session the last good answer when the refresh fails', async () => {
+    vi.useFakeTimers()
+    try {
+      gh.answer = () => Promise.resolve({ stdout: 'true', stderr: '' })
+      await isPullRequest(`owner/fallback-${key}`, 12)
+      vi.advanceTimersByTime(31 * 86400 * 1000)
+      gh.answer = () => Promise.reject(RATE_LIMIT)
+      expect(await together(() => isPullRequest(`owner/fallback-${key}`, 12))).toEqual(
+        Array(7).fill(true)
+      )
+      expect(gh.calls).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reads the working copy of one directory once', async () => {
+    gh.answer = () => Promise.resolve({ stdout: `/copy-${key}\n`, stderr: '' })
+    expect(await together(() => workingCopy(`/copy-${key}/src`))).toEqual(
+      Array(7).fill(`/copy-${key}`)
+    )
+    expect(gh.calls).toBe(1)
+  })
+
+  it('reads the origin of one working copy once, and asks again after a failure', async () => {
+    gh.answer = () => Promise.reject(NO_GH)
+    expect(await together(() => remote(`/origin-${key}`))).toEqual(
+      Array(7).fill({ host: null, project: null })
+    )
+    expect(gh.calls).toBe(1)
+    gh.answer = () => Promise.resolve({ stdout: 'git@github.com:owner/repo.git\n', stderr: '' })
+    expect(await together(() => remote(`/origin-${key}`))).toEqual(
+      Array(7).fill({ host: 'github.com', project: 'owner/repo' })
+    )
+    expect(gh.calls).toBe(2)
   })
 })
