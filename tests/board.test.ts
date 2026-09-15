@@ -290,13 +290,13 @@ describe('lanes', () => {
     const words = LANE_WORDS
     expect(words).toContain('waiting-for-ci')
     expect(words.indexOf('waiting-for-ci')).toBeGreaterThan(words.indexOf('waiting-for-you'))
-    expect(words.at(-1)).toBeNull()
+    expect(words.at(-2)).toBeNull()
   })
 
   it('names every lane, the leftover one included', () => {
     const titles = laneRows().map((lane) => lane.title)
     expect(titles).toContain('waiting for you')
-    expect(titles.at(-1)).toBe('other')
+    expect(titles.at(-2)).toBe('other')
   })
 })
 
@@ -550,10 +550,10 @@ describe('release', () => {
 })
 
 describe('the parked word', () => {
-  it('has a lane, under every wait and above the leftovers', () => {
+  it('has a lane, under every wait and under the leftovers too', () => {
     expect(LANE_WORDS).toContain('on-hold')
     expect(LANE_WORDS.indexOf('on-hold')).toBeGreaterThan(LANE_WORDS.indexOf('waiting-for-other'))
-    expect(LANE_WORDS.at(-1)).toBeNull()
+    expect(LANE_WORDS.at(-1)).toBe('on-hold')
   })
 
   it('has a class to be drawn in', () => {

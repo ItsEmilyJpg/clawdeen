@@ -169,9 +169,10 @@ function keepWord(key: string, value: string): void {
 const LANED = new Set(LANE_WORDS.filter(Boolean))
 
 /**
- * The workflow board, in lanes: what waits on her first, what is only queueing last. The last lane
- * takes a session with no state and a session whose state has no lane alike, because a word that
- * belongs nowhere took the row off the board entirely.
+ * The workflow board, in lanes: what waits on her first, what is only queueing last, and what she
+ * parked herself under all of it. The lane with no word takes a session with no state and a session
+ * whose state has no lane alike, because a word that belongs nowhere took the row off the board
+ * entirely.
  */
 const lanes = computed(() =>
   laneRows()
@@ -1073,7 +1074,10 @@ h1 {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-muted);
+  /* A lane wears the state class for its colour only. The chip that class was written for fills and
+     outlines itself, and on a heading the width of the board that reads as a box drawn round it. */
   background: none;
+  box-shadow: none;
 }
 
 .lane h2 b {
