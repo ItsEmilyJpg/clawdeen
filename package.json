@@ -29,7 +29,8 @@
     "hook:install": "node tools/hook/install.mjs",
     "hook:remove": "node tools/hook/install.mjs --remove",
     "private-names": "node tools/gate/private-names.mjs",
-    "check": "npm run typecheck && npm run lint && npm test && npm run private-names && node tools/gate/stamp.mjs"
+    "gate": "python3 tools/gate/message_test.py",
+    "check": "npm run typecheck && npm run lint && npm test && npm run gate && npm run private-names && node tools/gate/stamp.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
