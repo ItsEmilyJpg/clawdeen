@@ -1,20 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { isPullRequest, notFound, remote, workingCopy } from '../src/main/forge'
+import { gitlabMr, isPullRequest, notFound, remote, workingCopy } from '../src/main/forge'
+import type { SessionRecord } from '../src/main/records'
+
+/** What the fake shell answers, given the arguments the call was made with. */
+type Answer = (args?: string[]) => Promise<{ stdout: string; stderr: string }>
 
 const gh = vi.hoisted(() => ({
   calls: 0,
-  answer: (): Promise<{ stdout: string; stderr: string }> =>
-    Promise.resolve({ stdout: 'true', stderr: '' })
+  answer: ((): Promise<{ stdout: string; stderr: string }> =>
+    Promise.resolve({ stdout: 'true', stderr: '' })) as Answer
 }))
 
 // promisify(execFile) goes through the custom symbol, so that is what the fake has to carry.
 vi.mock('node:child_process', async () => {
   const { promisify: custom } = await import('node:util')
   const execFile = Object.assign(() => undefined, {
-    [custom.custom]: () => {
+    [custom.custom]: (_command: string, args: string[]) => {
       gh.calls += 1
-      return gh.answer()
+      return gh.answer(args)
     }
   })
   return { execFile }
@@ -179,6 +183,161 @@ describe('a lookup still being asked', () => {
     expect(await together(() => remote(`/origin-${key}`))).toEqual(
       Array(7).fill({ host: 'github.com', project: 'owner/repo' })
     )
+    expect(gh.calls).toBe(2)
+  })
+})
+
+/**
+ * The GitLab side, where a merge request is three questions: the branch's merge request, the merge
+ * request itself for the run standing on it, and that run's jobs.
+ */
+describe('gitlabMr reads the run on a merge request', () => {
+  let project = 0
+
+  const asked = (args: string[] | undefined, what: string): boolean =>
+    (args ?? []).some((argument) => argument.includes(what))
+
+  /** One session standing on a branch, which is all `branches()` needs to ask about it. */
+  const onBranch = (branch: string): SessionRecord => ({ sessionId: 'one', branch })
+
+  /** glab answering the three calls in turn, with the jobs the test is about. */
+  const forge =
+    (jobs: unknown[], pipeline: unknown = { id: 25212, status: 'running' }) =>
+    (args?: string[]): Promise<{ stdout: string; stderr: string }> => {
+      const mr = {
+        iid: 9249,
+        web_url: 'https://gitlab.example.com/group/repo/-/merge_requests/9249',
+        state: 'opened',
+        source_branch: 'feature/one',
+        has_conflicts: false
+      }
+      if (asked(args, '/jobs')) return Promise.resolve({ stdout: JSON.stringify(jobs), stderr: '' })
+      if (asked(args, '/merge_requests/')) {
+        return Promise.resolve({
+          stdout: JSON.stringify({ ...mr, head_pipeline: pipeline }),
+          stderr: ''
+        })
+      }
+      return Promise.resolve({ stdout: JSON.stringify([mr]), stderr: '' })
+    }
+
+  const job = (over: Record<string, unknown>): Record<string, unknown> => ({
+    name: 'test:php',
+    status: 'success',
+    allow_failure: false,
+    web_url: 'https://gitlab.example.com/group/repo/-/jobs/1',
+    started_at: '2026-09-17T08:00:00.000Z',
+    finished_at: '2026-09-17T08:10:00.000Z',
+    ...over
+  })
+
+  beforeEach(() => {
+    gh.calls = 0
+    // Every test asks a project of its own, so the cache one test fills never answers another.
+    project += 1
+  })
+
+  it('says a run is going, and how far it has got', async () => {
+    gh.answer = forge([
+      job({ name: 'lint:phpcs' }),
+      job({ name: 'test:php', status: 'running', finished_at: null })
+    ])
+    const change = await gitlabMr(
+      'gitlab.example.com',
+      `group/running-${project}`,
+      onBranch('feature/one')
+    )
+    expect(change?.token).toBe('MR !9249')
+    expect(change?.checks).toBe('ci-running')
+    expect(change?.progress).toEqual({
+      done: 1,
+      total: 2,
+      failed: 0,
+      since: Date.parse('2026-09-17T08:00:00.000Z') / 1000,
+      until: null
+    })
+  })
+
+  it('names the job that failed, with the link to it', async () => {
+    gh.answer = forge([
+      job({ name: 'lint:phpcs', status: 'failed', web_url: 'https://gitlab.example.com/jobs/7' }),
+      job({ name: 'test:php' })
+    ])
+    const change = await gitlabMr(
+      'gitlab.example.com',
+      `group/red-${project}`,
+      onBranch('feature/one')
+    )
+    expect(change?.checks).toBe('ci-red')
+    expect(change?.failed).toEqual([
+      { label: 'lint:phpcs', url: 'https://gitlab.example.com/jobs/7' }
+    ])
+    expect(change?.progress.until).toBe(Date.parse('2026-09-17T08:10:00.000Z') / 1000)
+  })
+
+  it('leaves a job the pipeline allows to fail out of the red, and counts it as over', async () => {
+    gh.answer = forge([job({ name: 'aws:deploy', status: 'failed', allow_failure: true })])
+    const change = await gitlabMr(
+      'gitlab.example.com',
+      `group/allowed-${project}`,
+      onBranch('feature/one')
+    )
+    expect(change?.checks).toBe(null)
+    expect(change?.failed).toEqual([])
+    expect(change?.progress.done).toBe(1)
+  })
+
+  /** Measured on this GitLab: six green, one manual, and one created behind it that never starts. */
+  it('does not call a stopped run running because a job behind a manual one is waiting', async () => {
+    gh.answer = forge(
+      [
+        job({ name: 'test:php' }),
+        job({ name: 'deploy', status: 'manual', started_at: null, finished_at: null }),
+        job({
+          name: 'aws:k8s-deploy',
+          status: 'created',
+          allow_failure: true,
+          started_at: null,
+          finished_at: null
+        })
+      ],
+      { id: 25210, status: 'manual' }
+    )
+    const change = await gitlabMr(
+      'gitlab.example.com',
+      `group/manual-${project}`,
+      onBranch('feature/one')
+    )
+    expect(change?.checks).toBe(null)
+    expect(change?.progress.done).toBe(3)
+  })
+
+  it('still says a run is going while the pipeline itself says so', async () => {
+    gh.answer = forge(
+      [
+        job({ name: 'test:php' }),
+        job({ name: 'test:cypress', status: 'created', finished_at: null })
+      ],
+      { id: 25212, status: 'running' }
+    )
+    const change = await gitlabMr(
+      'gitlab.example.com',
+      `group/going-${project}`,
+      onBranch('feature/one')
+    )
+    expect(change?.checks).toBe('ci-running')
+    expect(change?.progress).toMatchObject({ done: 1, total: 2 })
+  })
+
+  it('asks nothing about jobs where the merge request carries no run', async () => {
+    gh.answer = forge([], null)
+    const change = await gitlabMr(
+      'gitlab.example.com',
+      `group/nopipe-${project}`,
+      onBranch('feature/one')
+    )
+    expect(change?.checks).toBe(null)
+    expect(change?.progress).toEqual({ done: 0, total: 0, failed: 0, since: null, until: null })
     expect(gh.calls).toBe(2)
   })
 })

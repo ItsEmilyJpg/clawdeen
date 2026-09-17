@@ -29,8 +29,12 @@ const GIT_C = /\bgit\s+(?:-c\s+\S+\s+)*-C\s+('[^']+'|"[^"]+"|[^\s;&|<>]+)/g
 /** A path the shell computes says nothing here, and neither does one that only moves about. */
 const COMPUTED = /[$*`?{]/
 const NOWHERE = new Set(['-', '.', '..'])
-/** How many named directories are kept, so the newest that is a working copy has something behind it. */
-const KEPT = 20
+/**
+ * How many of the last commands decide where a session is working. Measured over 104 sessions: at 25
+ * and at every larger window the answer stops moving, and a shorter one lets a handful of commands
+ * in a directory the session only looked into outweigh the work it was doing all along.
+ */
+const WINDOW = 25
 /** How far the first pass looks back. In the last 64 KB half the transcripts name no directory at all. */
 const NAMED_BYTES = 256 * 1024
 
@@ -439,11 +443,14 @@ export async function modified(path: string): Promise<number> {
   return (await stat(path)).mtimeMs / 1000
 }
 
-/** The directories one transcript has named, oldest first, and how far it has been read. */
+/** Where one transcript's commands have run, oldest first, and how far it has been read. */
 interface Named {
   offset: number
   rest: string
-  paths: string[]
+  /** Where the shell stands, which a `cd` moves and every command after it inherits. */
+  cwd: string
+  /** One entry per command, in the directory that command ran in, trimmed to the window. */
+  placed: string[]
 }
 
 const named = new Map<string, Named>()
@@ -473,26 +480,43 @@ function commands(text: string): string[] {
   return found
 }
 
-/** The directories one command names, in the order it names them. */
-function directories(command: string, from: string): string[] {
-  const found: { at: number; path: string }[] = []
+/**
+ * The directories one command names, in the order it names them, and whether each moves the shell.
+ *
+ * `cd` moves it and everything after runs there; `git -C` is a question asked elsewhere and leaves
+ * the shell where it was. A relative path is read against where the shell stands, not against where
+ * the session was opened, because that is what the command itself meant by it.
+ */
+function directories(command: string, cwd: string): { moves: boolean; path: string }[] {
+  const found: { at: number; moves: boolean; path: string }[] = []
   for (const pattern of [CD, GIT_C]) {
     for (const match of command.matchAll(pattern)) {
       const said = match[1].replace(/^['"]|['"]$/g, '')
       if (COMPUTED.test(said) || NOWHERE.has(said)) continue
       const path = said.startsWith('~/') ? join(homedir(), said.slice(2)) : said
-      if (!isAbsolute(path) && !from) continue
-      found.push({ at: match.index, path: isAbsolute(path) ? path : resolve(from, path) })
+      if (!isAbsolute(path) && !cwd) continue
+      found.push({
+        at: match.index,
+        moves: pattern === CD,
+        path: isAbsolute(path) ? path : resolve(cwd, path)
+      })
     }
   }
-  return found.sort((one, other) => one.at - other.at).map((one) => one.path)
+  return found.sort((one, other) => one.at - other.at).map(({ moves, path }) => ({ moves, path }))
 }
 
 /**
- * Every directory the session's own commands have named, newest first. A relative one is read against
- * the copy the session was opened in, which is where the harness starts every command.
+ * Where the session's own commands have been running lately, the busiest directory first.
+ *
+ * Counted rather than only listed, because the newest directory a command named is not where the
+ * session works: one `cd ~/dotfiles` to check on a file had a session that was fixing a merge
+ * request elsewhere reading as a dotfiles session on the wrong branch, with no change to show. A
+ * visit is one command; the work is the rest of them.
  */
-export async function touchedPaths(path: string, from: string): Promise<string[]> {
+export async function workPlaces(
+  path: string,
+  from: string
+): Promise<{ path: string; commands: number }[]> {
   let size: number
   try {
     size = (await stat(path)).size
@@ -502,7 +526,7 @@ export async function touchedPaths(path: string, from: string): Promise<string[]
   let seen = named.get(path)
   // A transcript that shrank is a different file under the same name; what was read no longer holds.
   if (!seen || seen.offset > size) {
-    seen = { offset: Math.max(0, size - NAMED_BYTES), rest: '', paths: [] }
+    seen = { offset: Math.max(0, size - NAMED_BYTES), rest: '', cwd: from, placed: [] }
     named.set(path, seen)
   }
   if (size > seen.offset) {
@@ -515,15 +539,28 @@ export async function touchedPaths(path: string, from: string): Promise<string[]
       seen.rest = stop === -1 ? text : text.slice(stop + 1)
       seen.offset = size
       for (const command of commands(stop === -1 ? '' : text.slice(0, stop))) {
-        for (const directory of directories(command, from)) {
-          seen.paths = [...seen.paths.filter((kept) => kept !== directory), directory].slice(-KEPT)
+        let here = seen.cwd
+        for (const { moves, path: directory } of directories(command, seen.cwd)) {
+          if (moves) {
+            seen.cwd = directory
+            here = directory
+          } else {
+            // A question asked elsewhere counts for that directory without the command leaving here.
+            seen.placed.push(directory)
+          }
         }
+        if (here) seen.placed.push(here)
       }
+      seen.placed = seen.placed.slice(-WINDOW)
     } finally {
       await handle.close()
     }
   }
-  return [...seen.paths].reverse()
+  const counted = new Map<string, number>()
+  for (const directory of seen.placed) counted.set(directory, (counted.get(directory) ?? 0) + 1)
+  return [...counted]
+    .map(([directory, commands]) => ({ path: directory, commands }))
+    .sort((one, other) => other.commands - one.commands)
 }
 
 /** What has been summed of one transcript, and which responses are already in the sum. */
