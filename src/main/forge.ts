@@ -30,13 +30,21 @@ const STATES: { [key: string]: StateWord } = {
   closed: 'closed'
 }
 const OPEN_STATES = new Set(['open', 'opened'])
+/**
+ * Both forges' words for a verdict, in one set each, because a job is read the same way whichever
+ * side it ran on. GitLab's `canceled` is not GitHub's `CANCELLED` and is deliberately not red: a run
+ * is cancelled here by the next push, and GitLab does not call that pipeline failed either. Its
+ * `manual` is counted as done for the same reason, a job waiting for a person is not a job running.
+ */
 const CHECKS_RED = new Set([
   'FAILURE',
   'ERROR',
   'TIMED_OUT',
   'CANCELLED',
   'ACTION_REQUIRED',
-  'STARTUP_FAILURE'
+  'STARTUP_FAILURE',
+  // GitLab
+  'FAILED'
 ])
 const CHECKS_RUNNING = new Set([
   'QUEUED',
@@ -44,8 +52,26 @@ const CHECKS_RUNNING = new Set([
   'PENDING',
   'WAITING',
   'REQUESTED',
-  'EXPECTED'
+  'EXPECTED',
+  // GitLab
+  'CREATED',
+  'PREPARING',
+  'RUNNING',
+  'SCHEDULED',
+  'WAITING_FOR_RESOURCE'
 ])
+
+/** GitLab's words for a pipeline that is still going. Everything else has stopped, jobs or no jobs. */
+const PIPELINE_RUNNING = new Set([
+  'created',
+  'waiting_for_resource',
+  'preparing',
+  'pending',
+  'running'
+])
+
+/** What a change with no run behind it says about one: nothing counted, nothing timed. */
+const NO_PROGRESS: Progress = { done: 0, total: 0, failed: 0, since: null, until: null }
 
 interface Cached {
   at: number
@@ -348,6 +374,70 @@ interface MergeRequest {
   draft?: boolean
   source_branch?: string
   has_conflicts?: boolean
+  /** Only the merge request read on its own carries this; the list leaves it out altogether. */
+  head_pipeline?: { id?: number; status?: string } | null
+}
+
+interface GitlabJob {
+  name?: string
+  status?: string
+  allow_failure?: boolean
+  web_url?: string
+  started_at?: string | null
+  finished_at?: string | null
+}
+
+/** GitLab's own API, which glab passes through, for what `glab mr` does not say. */
+function api<T>(host: string, path: string): Promise<T | undefined> {
+  return json<T>('glab', ['api', path], { env: { GITLAB_HOST: host } })
+}
+
+/** A project is named to the API by its path, escaped, the way GitLab wants it. */
+const encoded = (project: string): string => encodeURIComponent(project)
+
+/**
+ * What one job's status means for the board.
+ *
+ * A job the pipeline allows to fail is not a red check: GitLab does not fail the pipeline over it,
+ * so neither does this. A job still waiting its turn in a pipeline that has stopped is not running
+ * either: a `manual` job holds its stage until somebody presses it, and everything behind it sits at
+ * `created` for good. Measured on three merge requests here, each with six jobs green, one manual and
+ * one created behind it: reading those two as running had a run that was over saying `CI běží 8/9`,
+ * and it would have said it for as long as the branch lived.
+ */
+function verdictOf(job: GitlabJob, going: boolean): string | undefined {
+  const status = (job.status ?? '').toUpperCase()
+  if (job.allow_failure && status === 'FAILED') return 'NEUTRAL'
+  if (!going && CHECKS_RUNNING.has(status)) return 'NEUTRAL'
+  return job.status
+}
+
+/** The jobs of one pipeline, read as the checks of a change. */
+async function gitlabChecks(
+  host: string,
+  project: string,
+  pipeline: { id: number; status?: string }
+): Promise<{ checks: Change['checks']; failed: Job[]; progress: Progress }> {
+  const jobs = await cached<GitlabJob[]>(
+    `glab-jobs:${host}:${project}:${pipeline.id}`,
+    CHECKS_TTL,
+    () =>
+      api<GitlabJob[]>(
+        host,
+        `projects/${encoded(project)}/pipelines/${pipeline.id}/jobs?per_page=100`
+      )
+  )
+  // The pipeline's own word on whether it is going, which is what says how to read a waiting job.
+  const going = PIPELINE_RUNNING.has((pipeline.status ?? '').toLowerCase())
+  return checksOf(
+    (jobs ?? []).map((job) => ({
+      conclusion: verdictOf(job, going),
+      name: job.name,
+      detailsUrl: job.web_url,
+      startedAt: job.started_at ?? undefined,
+      completedAt: job.finished_at ?? undefined
+    }))
+  )
 }
 
 export async function gitlabMr(
@@ -366,23 +456,32 @@ export async function gitlabMr(
           { env: { GITLAB_HOST: host } }
         )
     )
-    const mr = found?.[0]
-    if (mr?.web_url) {
-      return {
-        label: `MR !${mr.iid}`,
-        token: `MR !${mr.iid}`,
-        url: mr.web_url,
-        state: stateOf(mr.state, mr.draft),
-        open: OPEN_STATES.has(mr.state ?? ''),
-        draft: Boolean(mr.draft),
-        branch: mr.source_branch ?? null,
-        checks: null,
-        failed: [],
-        progress: { done: 0, total: 0, failed: 0, since: null, until: null },
-        conflict: Boolean(mr.has_conflicts),
-        review: null,
-        issues: []
-      }
+    const listed = found?.[0]
+    if (!listed?.web_url) continue
+    // The list is asked seldom, because a branch keeps its merge request; the run on it changes
+    // while the session works, so the merge request itself is read back on the checks' own clock.
+    const mr =
+      (await cached<MergeRequest>(`glab-mr:${host}:${project}:${listed.iid}`, CHECKS_TTL, () =>
+        api<MergeRequest>(host, `projects/${encoded(project)}/merge_requests/${listed.iid}`)
+      )) ?? listed
+    const pipeline = mr.head_pipeline
+    const run = pipeline?.id
+      ? await gitlabChecks(host, project, { id: pipeline.id, status: pipeline.status })
+      : { checks: null, failed: [], progress: NO_PROGRESS }
+    return {
+      label: `MR !${mr.iid}`,
+      token: `MR !${mr.iid}`,
+      url: mr.web_url ?? listed.web_url,
+      state: stateOf(mr.state, mr.draft),
+      open: OPEN_STATES.has(mr.state ?? ''),
+      draft: Boolean(mr.draft),
+      branch: mr.source_branch ?? null,
+      checks: run.checks,
+      failed: run.failed,
+      progress: run.progress,
+      conflict: Boolean(mr.has_conflicts),
+      review: null,
+      issues: []
     }
   }
   return null

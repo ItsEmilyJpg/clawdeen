@@ -18,9 +18,9 @@ import {
   lastTurn,
   modified,
   pendingWork,
-  touchedPaths,
   transcripts,
   watchedFor,
+  workPlaces,
   type Doing
 } from './transcripts'
 import { usage } from './usage'
@@ -280,15 +280,26 @@ export function release(sessions: Session[], parked: readonly string[]): string[
 
 /**
  * Where the session works, which is not where it was opened as soon as the work happens in another
- * checkout: the newest directory its own commands name, where that is a working copy at all.
+ * checkout: the working copy most of its recent commands ran in, where that is a working copy at all.
+ *
+ * Weighed rather than taken from the newest command, because a session reads a file in another
+ * repository or asks git one question about it without moving there. A tie keeps the copy it was
+ * opened in: that is where the harness starts every command, so it wins anything it has not lost.
  */
 async function workedIn(path: string | undefined, opened: string): Promise<string> {
   if (!path) return opened
-  for (const said of await touchedPaths(path, opened)) {
+  const home = (await workingCopy(opened)) ?? opened
+  const weighed = new Map<string, number>([[home, 0]])
+  for (const { path: said, commands } of await workPlaces(path, opened)) {
     const copy = await workingCopy(said)
-    if (copy) return copy
+    // A worktree and its main checkout are separate copies here: each is on its own branch.
+    if (copy) weighed.set(copy, (weighed.get(copy) ?? 0) + commands)
   }
-  return opened
+  let worked = home
+  for (const [copy, commands] of weighed) {
+    if (commands > (weighed.get(worked) ?? 0)) worked = copy
+  }
+  return worked
 }
 
 async function describe(
